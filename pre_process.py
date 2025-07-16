@@ -1,7 +1,8 @@
-from utils import check_type, get_raw
+from utils import check_type, get_raw, find_continuous_area_2d
 import gc
 import numpy as np
 import mne
+import portion as P
 
 class data_gen():
     _SFREQ = 250.0
@@ -45,15 +46,19 @@ class data_gen():
         "EEG O1-REF", "EEG O1-LE", "EEG O1", "O1",
         "EEG O2-REF", "EEG O2-LE", "EEG O2", "O2"]
 
+        #mappa dei nomi dai possibili usati ad uno standard semplice
         ch_mapper = {}
         for i in range(0, len(ch_map), 4):
             standard_name = ch_map[i + 3]
             for j in range(4):
                 ch_mapper[ch_map[i + j]] = standard_name
         
+        #rinomino i canali
         raw_obj.rename_channels(ch_mapper)
         ch_names = set(raw_obj.ch_names)
         ch_neccessary = set(ch_mapper.values())
+
+        #controllo che tutti i nomi dei canali siano presenti
         if set(ch_neccessary).issubset(ch_names):
             raw_obj.pick_channels(ch_neccessary, ordered=True)
         else:
@@ -61,23 +66,47 @@ class data_gen():
         
     def get_filtered_data(self, verbose):
 
+        #prendo l'oggetto raw contenente l'eeg
         raw = get_raw(self.f_name, verbose)
+        #controllo la presenza dei canali
         self.check_channel_names(raw,verbose)
+        #carico direttamente i dati grezzi per modifica in place
         raw.load_data(verbose)
+        #modifico la frequenza di campionamento
         raw.resample(self._SFREQ, verbose)
+        #riferisco alla media per istante
         raw.set_eeg_reference(ref_channels='average', verbose=verbose)
+        #prendo una copia dei dati grezzi
         data = raw.get_data()
         filter_results = {}
         
+        #filtro il segnale in 5 bande
         for key,(lf,hf) in self._BANDS.items():
             filter_results[key] = mne.filter.filter_data(data,self._SFREQ,l_freq=lf,h_freq=hf,l_trans_freq=self._l_trans_bandwidth, h_trans_freq=self._h_trans_bandwidth,verbose=verbose).astype(np.float32)
 
         ch_names = raw.ch_names
         
+        #pulisco la memoria
         del raw, data
         gc.collect()
         return filter_results, ch_names
-    
+
     def save_final_data(self, seg_len = 5.0, amp_th = 400, merge_len = 1.0, drop = 60.0):
-        data = self.data[whole]
+        #carico il segnale completo
+        data = self.data['whole']
+        #setto le treashold necessarie
+        m_treashold = int(merge_len*self._SFREQ)
+        s_treashold = int(seg_len*self._SFREQ)
+        start = int(drop*self._SFREQ)
+        end = data.shape[1] - int(drop * self._SFREQ)
+        #creo un intervallo
+        whole_r = P.closed(start, end)
+        #creo la lista di campioni accettabili o meno
+        flag = np.abs(data) * 1e6 > amp_th
+        #prendo il set degli intervalli accettabili
+        acc_int = find_continuous_area_2d(flag)
+        
+
+
+        
         

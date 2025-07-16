@@ -1,5 +1,9 @@
 import os
 import mne
+import numpy as np
+from functools import partial
+import itertools as it
+import portions as P
 
 def check_type(p_name, p_value, allowed_types):
     """"
@@ -83,3 +87,75 @@ def get_raw(f_path, preload=False):
     if os.path.isdir(f_path):
         raise KeyError('can`t identify %s.'%f_path)
     return mne.io.read_raw_edf(f_path, preload,verbose='WARNING')
+
+def find_continuous_area_1d(mask, a_th=0):
+    #controllo dei tipi in input
+    check_type("mask", mask, [np.ndarray])
+    check_type("area_threshold", a_th, [int])
+
+    #controllo delle forme degli input
+    if mask.dtype != bool:
+        raise TypeError("The data type of `mask` must be numpy.bool, but got %s instead." % mask.dtype)
+    if mask.ndim != 1:
+        raise ValueError("`mask` must be 1d-numpy.ndarray, "
+                         "but got {dimension}d instead.".format(dimension=mask.ndim))
+    if a_th < 0:
+        raise ValueError("area_threshold must be integer no less than 0, but got %s" % a_th)
+    
+    res = []
+    #prendo tutioni contigui true, cioe gli intervalli accettati
+    for k, g in it.groupby(enumerate(mask), key=lambda x: x[1]):
+        if k:
+            index, _ = list(zip(*g))
+            if index[-1] - index[0] >= a_th:
+                #creo l'intervallo se la lunghezza supera la soglia
+                res.append(P.closed(index[0], index[-1]))
+        #restituisco un set di intervalli        
+        return P.IntervalSet(res)
+
+
+def find_continuous_area_2d(mask, a_th=0):
+    #controllo dei tipi in input
+    check_type('mask', mask, [np.ndarray])
+    check_type('a_th', a_th, [int])
+
+    #controllo delle forme degli input
+    if mask.dtype != bool:
+        raise TypeError("The data type of `mask` must be numpy.bool, but got %s instead." % mask.dtype)
+    if mask.ndim != 2:
+        raise ValueError("`mask` must be 2d-numpy.ndarray, "
+                         "but got {dimension}d instead.".format(dimension=mask.ndim))
+    if a_th < 0:
+        raise ValueError("area_threshold must be integer no less than 0, but got %s" % a_th)
+    
+    #applico la ricerca riga per riga
+    func = partial(find_continuous_area_1d, a_th=a_th)
+    res = list(map(func, mask))
+    return res
+
+def merge_continuous_are(x, th):
+    #controllo i tipi degli input
+    check_type('x',x,[P.IntervalSet])
+    check_type('th',th,[int,float])
+
+    #controllo la dimensione della treashold
+    if th <= 0.0:
+        raise ValueError("threshold must be float or int > 0.0, but got %s instead" % th)
+    #se ho 0 o 1 intervallo lo ritorno direttamente
+    n = len(x)
+    if n <= 1:
+        return x
+    
+    #unisco gli intervalli più vicini di una preashold
+    res = []
+    pre = x[0]
+    for i in range(1, n):
+        cur = x[i]
+        if cur.lower_bound - pre.upper_bound <= th:
+            pre = pre | cur
+        else:
+            res.append(pre)
+            pre = cur
+    res.append(pre)
+    return P.IntervalSet(res)
+    
