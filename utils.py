@@ -111,7 +111,7 @@ def find_continuous_area_1d(mask, a_th=0):
                 #creo l'intervallo se la lunghezza supera la soglia
                 res.append(P.closed(index[0], index[-1]))
         #restituisco un set di intervalli        
-        return P.IntervalSet(res)
+        return res
 
 
 def find_continuous_area_2d(mask, a_th=0):
@@ -135,7 +135,7 @@ def find_continuous_area_2d(mask, a_th=0):
 
 def merge_continuous_area(x, th):
     #controllo i tipi degli input
-    check_type('x',x,[P.IntervalSet])
+    check_type('x',x,[list])
     check_type('th',th,[int,float])
 
     #controllo la dimensione della treashold
@@ -157,5 +157,5 @@ def merge_continuous_area(x, th):
             res.append(pre)
             pre = cur
     res.append(pre)
-    return P.IntervalSet(res)
+    return res
     

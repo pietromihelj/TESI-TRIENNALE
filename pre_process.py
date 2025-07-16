@@ -6,15 +6,10 @@ import pandas as pd
 import random
 import os
 import portion as P
-import sys
-
 class data_gen():
     _SFREQ = 250.0
 
     max_clips = 500
-    _l_trans_bandwidth = 0.1
-    _h_trans_bandwidth = 0.1
-    #_filter_length_value = '31s' 
 
     _BANDS = {"whole": (1.0, 30.0),
               "delta": (1.0, 4.0),
@@ -89,8 +84,7 @@ class data_gen():
         #filtro il segnale in 5 bande
         for key,(lf,hf) in self._BANDS.items():
             
-            #filter_results[key] = mne.filter.filter_data(data, self._SFREQ, l_freq=lf, h_freq=hf, filter_length=self._filter_length_value, verbose=verbose).astype(np.float32)
-            filter_results[key] = mne.filter.filter_data(data,self._SFREQ,l_freq=lf,h_freq=hf,l_trans_freq=self._l_trans_bandwidth, h_trans_freq=self._h_trans_bandwidth,verbose=verbose).astype(np.float32)
+            filter_results[key] = mne.filter.filter_data(data, self._SFREQ, l_freq=lf, h_freq=hf, filter_length='auto', fir_design='firwin',verbose=verbose).astype(np.float32)
 
         ch_names = raw.ch_names
         
