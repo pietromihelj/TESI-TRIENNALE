@@ -83,5 +83,3 @@ def get_raw(f_path, preload=False):
     if os.path.isdir(f_path):
         raise KeyError('can`t identify %s.'%f_path)
     return mne.io.read_raw_edf(f_path, preload,verbose='WARNING')
-
-

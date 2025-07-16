@@ -51,7 +51,7 @@ class data_gen():
             for j in range(4):
                 ch_mapper[ch_map[i + j]] = standard_name
         
-        raw_obj.rename_channels(ch_mapper,verbose)
+        raw_obj.rename_channels(ch_mapper)
         ch_names = set(raw_obj.ch_names)
         ch_neccessary = set(ch_mapper.values())
         if set(ch_neccessary).issubset(ch_names):
@@ -70,12 +70,14 @@ class data_gen():
         filter_results = {}
         
         for key,(lf,hf) in self._BANDS.items():
-            filter_results[key] = mne.filter.filter_data(data,self._SFREQ,l_freq=lf,h_freq=hf,l_trans_freq=self._l_trans_bandwidth, h_trans_freq=self._h_trans_bandwidth,verbose=verbose).astype(np)
+            filter_results[key] = mne.filter.filter_data(data,self._SFREQ,l_freq=lf,h_freq=hf,l_trans_freq=self._l_trans_bandwidth, h_trans_freq=self._h_trans_bandwidth,verbose=verbose).astype(np.float32)
 
         ch_names = raw.ch_names
         
         del raw, data
         gc.collect()
         return filter_results, ch_names
-
     
+    def save_final_data(self, seg_len = 5.0, amp_th = 400, merge_len = 1.0, drop = 60.0):
+        data = self.data[whole]
+        
