@@ -133,7 +133,7 @@ def find_continuous_area_2d(mask, a_th=0):
     res = list(map(func, mask))
     return res
 
-def merge_continuous_are(x, th):
+def merge_continuous_area(x, th):
     #controllo i tipi degli input
     check_type('x',x,[P.IntervalSet])
     check_type('th',th,[int,float])

@@ -1,7 +1,10 @@
-from utils import check_type, get_raw, find_continuous_area_2d
+from utils import check_type, get_raw, find_continuous_area_2d, merge_continuous_area
 import gc
 import numpy as np
 import mne
+import pandas as pd
+import random
+import os
 import portion as P
 
 class data_gen():
@@ -90,22 +93,75 @@ class data_gen():
         del raw, data
         gc.collect()
         return filter_results, ch_names
+    
+    @staticmethod
+    def filter_intervalset(input_intervalset, threshold):
+        return [i for i in input_intervalset if i.upper - i.lower > threshold]
 
     def save_final_data(self, seg_len = 5.0, amp_th = 400, merge_len = 1.0, drop = 60.0):
         #carico il segnale completo
         data = self.data['whole']
         #setto le treashold necessarie
-        m_treashold = int(merge_len*self._SFREQ)
-        s_treashold = int(seg_len*self._SFREQ)
+        m_th = int(merge_len*self._SFREQ)
+        s_th = int(seg_len*self._SFREQ)
         start = int(drop*self._SFREQ)
         end = data.shape[1] - int(drop * self._SFREQ)
         #creo un intervallo
         whole_r = P.closed(start, end)
-        #creo la lista di campioni accettabili o meno
+        #creo la lista lista delle posizioni degli artefatti
         flag = np.abs(data) * 1e6 > amp_th
-        #prendo il set degli intervalli accettabili
-        acc_int = find_continuous_area_2d(flag)
+        #estraggo gli intervallli contenenti gli artefatti
+        art = find_continuous_area_2d(flag)
+        #unisco gli artefatti vicini
+        merged_art = [merge_continuous_area(s, m_th) for s in art]
+        #elimino i segmenti con artefatti da whole_r
+        c_clean = [whole_r - s for s in merged_art]
+        #tengo solo i campioni più lunghi di threashold
+        keep_clean = [self._filter_intervalset(s, s_th) for s in c_clean]
+
+        out = []
+        #per ogni canale e set di intervalli associati
+        for idx, item_set in enumerate(keep_clean, 0):
+            #per ogni intervallo
+            for item in item_set:
+                #suddivido in segmenti di dimensione s_th
+                tmp = np.arange(item.lower, item.upper + 1, s_th)
+                if len(tmp) > 1:
+                    for idj in range(len(tmp) - 1):
+                        out.append([idx, self.ch_names[idx], tmp[idj], tmp[idj + 1]])
+        #creo un dataframe con codice canale, nome, e punto di inizio e fine
+        df_clean = pd.DataFrame(out, columns=["idx", "ch_names", "clip_start", "clip_stop"])
+
+        #unifico in dati in un array 3d
+        udata = np.stack([self.data["whole"],
+                          self.data["delta"],
+                          self.data["theta"],
+                          self.data["alpha"],
+                          self.data["low_beta"],
+                          self.data["high_beta"]], axis=0) * 1.0e6
         
+        #lista dei segmenti
+        seg_list = list(zip(df_clean.idx, df_clean.clip_start, df_clean.clip_stop))
+
+        if len(seg_list) >= 200:
+            if len(seg_list) > self.max_clips:
+                seg_list = random.sample(seg_list, self.max_clips)
+            
+            outputs = []
+            for p in seg_list:
+                idx, start, stop = p
+                tmp = udata[:, idx, start:stop]
+                outputs.append(tmp)
+            
+            outputs = np.stack(outputs, axis=0)
+            out_file = os.path.join(self.out_dir, "%s.npy" % self.out_prefix)
+            np.save(out_file, outputs)
+            
+
+
+
+
+
 
 
         
