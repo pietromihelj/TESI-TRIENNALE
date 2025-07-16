@@ -6,6 +6,7 @@ import pandas as pd
 import random
 import os
 import portion as P
+import sys
 
 class data_gen():
     _SFREQ = 250.0
@@ -13,6 +14,7 @@ class data_gen():
     max_clips = 500
     _l_trans_bandwidth = 0.1
     _h_trans_bandwidth = 0.1
+    #_filter_length_value = '31s' 
 
     _BANDS = {"whole": (1.0, 30.0),
               "delta": (1.0, 4.0),
@@ -48,7 +50,7 @@ class data_gen():
         "EEG T6-REF", "EEG T6-LE", "EEG T6", "T6",
         "EEG O1-REF", "EEG O1-LE", "EEG O1", "O1",
         "EEG O2-REF", "EEG O2-LE", "EEG O2", "O2"]
-
+        ch_necessary = ['FP1', 'FP2', 'F3', 'F4', 'FZ', 'F7', 'F8', 'P3', 'P4', 'PZ', 'C3', 'C4', 'CZ', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
         #mappa dei nomi dai possibili usati ad uno standard semplice
         ch_mapper = {}
         for i in range(0, len(ch_map), 4):
@@ -57,13 +59,14 @@ class data_gen():
                 ch_mapper[ch_map[i + j]] = standard_name
         
         #rinomino i canali
-        raw_obj.rename_channels(ch_mapper)
+        existing_channels = set(raw_obj.info['ch_names'])
+        filtered_ch_mapper = {old: new for old, new in ch_mapper.items() if old in existing_channels}
+        raw_obj.rename_channels(filtered_ch_mapper)
         ch_names = set(raw_obj.ch_names)
-        ch_neccessary = set(ch_mapper.values())
 
         #controllo che tutti i nomi dei canali siano presenti
-        if set(ch_neccessary).issubset(ch_names):
-            raw_obj.pick_channels(ch_neccessary, ordered=True)
+        if set(ch_necessary).issubset(ch_names):
+            raw_obj.pick(ch_necessary)
         else:
             raise RuntimeError("Channel Error")
         
@@ -76,7 +79,7 @@ class data_gen():
         #carico direttamente i dati grezzi per modifica in place
         raw.load_data(verbose)
         #modifico la frequenza di campionamento
-        raw.resample(self._SFREQ, verbose)
+        raw.resample(self._SFREQ, verbose=verbose)
         #riferisco alla media per istante
         raw.set_eeg_reference(ref_channels='average', verbose=verbose)
         #prendo una copia dei dati grezzi
@@ -85,6 +88,8 @@ class data_gen():
         
         #filtro il segnale in 5 bande
         for key,(lf,hf) in self._BANDS.items():
+            
+            #filter_results[key] = mne.filter.filter_data(data, self._SFREQ, l_freq=lf, h_freq=hf, filter_length=self._filter_length_value, verbose=verbose).astype(np.float32)
             filter_results[key] = mne.filter.filter_data(data,self._SFREQ,l_freq=lf,h_freq=hf,l_trans_freq=self._l_trans_bandwidth, h_trans_freq=self._h_trans_bandwidth,verbose=verbose).astype(np.float32)
 
         ch_names = raw.ch_names
@@ -156,13 +161,3 @@ class data_gen():
             outputs = np.stack(outputs, axis=0)
             out_file = os.path.join(self.out_dir, "%s.npy" % self.out_prefix)
             np.save(out_file, outputs)
-            
-
-
-
-
-
-
-
-        
-        

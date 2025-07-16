@@ -3,7 +3,7 @@ import mne
 import numpy as np
 from functools import partial
 import itertools as it
-import portions as P
+import portion as P
 
 def check_type(p_name, p_value, allowed_types):
     """"
@@ -61,12 +61,12 @@ def get_path_list(d_path, f_extensions,sub_d = False):
                 if accept_file(root, name, f_extensions):
                     path_list.append(os.path.join(root, name))
     else:
+        files = os.listdir(d_path)
         for name in files:
-            files = os.listdir(d_path)
             if accept_file(d_path, name, f_extensions):
                 path_list.append(os.path.join(d_path, name))
     
-    return path_list
+    return np.array(path_list)
 
 def get_abs_path(path):
     check_type('path', path, [str])
@@ -86,7 +86,7 @@ def get_raw(f_path, preload=False):
     check_type('f_path', f_path, [str])
     if os.path.isdir(f_path):
         raise KeyError('can`t identify %s.'%f_path)
-    return mne.io.read_raw_edf(f_path, preload,verbose='WARNING')
+    return mne.io.read_raw_edf(f_path, preload= preload,verbose='WARNING')
 
 def find_continuous_area_1d(mask, a_th=0):
     #controllo dei tipi in input
