@@ -88,7 +88,7 @@ def get_raw(f_path, preload=False):
         raise KeyError('can`t identify %s.'%f_path)
     return mne.io.read_raw_edf(f_path, preload= preload,verbose='WARNING')
 
-def find_continuous_area_1d(mask, a_th=0):
+def find_artefacts_1d(mask, a_th=0):
     #controllo dei tipi in input
     check_type("mask", mask, [np.ndarray])
     check_type("area_threshold", a_th, [int])
@@ -105,16 +105,19 @@ def find_continuous_area_1d(mask, a_th=0):
     res = []
     #prendo tutioni contigui true, cioe gli intervalli accettati
     for k, g in it.groupby(enumerate(mask), key=lambda x: x[1]):
+        #k=flag dell'intervallo, g=iteratore sui campioni dell'intervallo
+        #se l'intervallo è vero, prendo gli indici 
         if k:
             index, _ = list(zip(*g))
+            #se la lunghezza dell'intervallo supera la soglia
             if index[-1] - index[0] >= a_th:
                 #creo l'intervallo se la lunghezza supera la soglia
                 res.append(P.closed(index[0], index[-1]))
-        #restituisco un set di intervalli        
-        return res
+        #restituisco un set di intervalli      
+    return res
 
 
-def find_continuous_area_2d(mask, a_th=0):
+def find_artefacts_2d(mask, a_th=0):
     #controllo dei tipi in input
     check_type('mask', mask, [np.ndarray])
     check_type('a_th', a_th, [int])
@@ -129,11 +132,18 @@ def find_continuous_area_2d(mask, a_th=0):
         raise ValueError("area_threshold must be integer no less than 0, but got %s" % a_th)
     
     #applico la ricerca riga per riga
-    func = partial(find_continuous_area_1d, a_th=a_th)
+    func = partial(find_artefacts_1d, a_th=a_th)
     res = list(map(func, mask))
     return res
 
-def merge_continuous_area(x, th):
+def interval_set(lista_intervalli):
+    """Unisce una lista di intervalli in un singolo oggetto portion.Interval."""
+    set_intervalli = P.empty() 
+    for intervallo in lista_intervalli:
+        set_intervalli = set_intervalli | intervallo
+    return set_intervalli
+
+def merge_continuous_artifacts(x, th):
     #controllo i tipi degli input
     check_type('x',x,[list])
     check_type('th',th,[int,float])
@@ -144,18 +154,19 @@ def merge_continuous_area(x, th):
     #se ho 0 o 1 intervallo lo ritorno direttamente
     n = len(x)
     if n <= 1:
-        return x
-    
+        return interval_set(x)
+    #ordino gli intervalli per il lower bound
+    x.sort(key=lambda interval: interval.lower)
     #unisco gli intervalli più vicini di una preashold
     res = []
     pre = x[0]
     for i in range(1, n):
         cur = x[i]
-        if cur.lower_bound - pre.upper_bound <= th:
+        if cur.lower - pre.upper <= th:
             pre = pre | cur
         else:
             res.append(pre)
             pre = cur
     res.append(pre)
-    return res
+    return interval_set(res)
     

@@ -1,4 +1,4 @@
-from utils import check_type, get_raw, find_continuous_area_2d, merge_continuous_area
+from utils import check_type, get_raw, find_artefacts_2d, merge_continuous_artifacts
 import gc
 import numpy as np
 import mne
@@ -100,6 +100,7 @@ class data_gen():
     def save_final_data(self, seg_len = 5.0, amp_th = 400, merge_len = 1.0, drop = 60.0):
         #carico il segnale completo
         data = self.data['whole']
+        
         #setto le treashold necessarie
         m_th = int(merge_len*self._SFREQ)
         s_th = int(seg_len*self._SFREQ)
@@ -110,15 +111,19 @@ class data_gen():
         #creo la lista lista delle posizioni degli artefatti
         flag = np.abs(data) * 1e6 > amp_th
         #estraggo gli intervallli contenenti gli artefatti
-        art = find_continuous_area_2d(flag)
+        art = find_artefacts_2d(flag)#art è una lista di liste di intervalli
         #unisco gli artefatti vicini
-        merged_art = [merge_continuous_area(s, m_th) for s in art]
+        merged_art = [merge_continuous_artifacts(s, m_th) for s in art]#s è una lista di intervalli per uno specifico canale
+        #merged_art è una lista di liste di intervalli
         #elimino i segmenti con artefatti da whole_r
         c_clean = [whole_r - s for s in merged_art]
+        print(len(c_clean))
+        print(type(c_clean))
         #tengo solo i campioni più lunghi di threashold
-        keep_clean = [self._filter_intervalset(s, s_th) for s in c_clean]
+        keep_clean = [self.filter_intervalset(s, s_th) for s in c_clean]
 
         out = []
+
         #per ogni canale e set di intervalli associati
         for idx, item_set in enumerate(keep_clean, 0):
             #per ogni intervallo
@@ -153,5 +158,5 @@ class data_gen():
                 outputs.append(tmp)
             
             outputs = np.stack(outputs, axis=0)
-            out_file = os.path.join(self.out_dir, "%s.npy" % self.out_prefix)
+            out_file = os.path.join(self.d_out, "%s.npy" % self.out_prefix)
             np.save(out_file, outputs)
