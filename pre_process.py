@@ -117,8 +117,6 @@ class data_gen():
         #merged_art è una lista di liste di intervalli
         #elimino i segmenti con artefatti da whole_r
         c_clean = [whole_r - s for s in merged_art]
-        print(len(c_clean))
-        print(type(c_clean))
         #tengo solo i campioni più lunghi di threashold
         keep_clean = [self.filter_intervalset(s, s_th) for s in c_clean]
 
