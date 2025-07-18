@@ -1,0 +1,69 @@
+import json
+import os
+import random
+import numpy as np
+from joblib import Parallel, delayed, cpu_count
+from utils import get_path_list
+from tqdm import tqdm
+
+def merge_data(path_list, out_dir, seed=0):
+    #setto il seed per la riproducibilità
+    np.random.seed(seed)
+    #nomino le bande
+    band_names = ["whole", "delta", "theta", "alpha",  "low_beta", "high_beta"]
+    #prendo il numero di processi
+    n_jobs = cpu_count()
+    #leggo i file
+    data = Parallel(n_jobs=n_jobs, backend='loky')(delayed(np.load)(f) for f in tqdm(path_list))
+    #concateno lungo la dimensione del numero dei campioni ottenendo [n_campioni totale, 6, lunghezza campione]
+    data = np.concatenate(data, axis=0)
+    np.random.shuffle(data)
+
+    #salvo 6 file (1 per banda) con la forma [n_campioni totali, lunghezza campione]
+    for i, name in enumerate(band_names):
+        print("save %s to %s" % (name, out_dir))
+        #creo il path del file
+        out_files = os.path.join(out_dir, name + '.npy')
+        #creo il numpy array del file da salvare
+        sx = data[:,i,:]
+        np.save(out_files, sx)
+
+def make_save_dataset(f_dir, out_dir, ratio=0.2, seed=0):
+    #se non esiste creo la directory di output
+    if not os.path.isdir(out_dir):
+        os.makedirs(out_dir)
+    #prendo i path ai file da leggere
+    path_list = get_path_list(d_path=f_dir, f_extensions=['.npy']).tolist()
+    print("paths presi")
+    #creo il file contenente i paths
+    paths_file = os.path.join(out_dir, "dataset_paths.json")
+    
+    random.shuffle(path_list)
+
+    #suddivido i paths in training e test dopo averli mischiati
+    n_tr = int((1.0-ratio)*len(path_list))
+    tr_paths = path_list[0:n_tr]
+    te_paths = path_list[n_tr:]
+    print("create liste di train e test dei path")
+
+    #popolo il file dei paths all'interno della output directory
+    with open(paths_file,"w") as fo:
+        json.dump({"train":tr_paths, "test":te_paths}, fp=fo, indent=1)
+
+    #creo la directory di test se non esiste
+    te_dir = os.path.join(out_dir,"test")
+    if not os.path.isdir(te_dir):
+        os.makedirs(te_dir)
+    
+    #creo la directory di train se non esiste
+    tr_dir = os.path.join(out_dir,"train")
+    if not os.path.isdir(tr_dir):
+        os.makedirs(tr_dir)
+    print("create directory di test e train")
+    #popolo la directory di test
+    print("inizio salvataggio file di test")
+    merge_data(te_paths, te_dir)
+    #popolo la directory di train
+    print("inizio salvataggio file di train")
+    merge_data(tr_paths,tr_dir)
+    print("DONE!")
