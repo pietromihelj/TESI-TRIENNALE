@@ -1,5 +1,6 @@
 import os
 import mne
+import time
 import numpy as np
 from functools import partial
 import itertools as it
@@ -170,3 +171,33 @@ def merge_continuous_artifacts(x, th):
     res.append(pre)
     return interval_set(res)
     
+def timer(func):
+    @wraps(func)
+    def wrapper(*arg, **kw):
+        start = time.time()
+        r = func(*arg, **kw)
+        end = time.time()
+        total_time = end - start
+        print("[%s] Elapsed time: %.5f s." % (func.__name__, total_time))
+        return r
+
+    return wrapper
+
+def type_assert(*type_args, **type_kwargs):
+
+    def decorator(func):
+        sig = signature(func)
+        bound_types = sig.bind_partial(*type_args, **type_kwargs).arguments
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            bound_values = sig.bind(*args, **kwargs)
+            for name, value in bound_values.arguments.items():
+                if name in bound_types:
+                    if not isinstance(value, bound_types[name]):
+                        raise TypeError('Argument {} must be {}'.format(name, bound_types[name]))
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator

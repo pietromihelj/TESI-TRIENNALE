@@ -158,6 +158,8 @@ class Encoder(nn.Module):
         out_features = [16,24,32,32]
         n_rblocks = [2,2,2,2]
 
+        #creo una rete composta da layer conv1d, batchnorm1d e leaky relu intervallata da blocchi residui
+        #per migliorare la stabilità dell'allenamento ed affrontare i problemi del gradient vanishing and exploding
         for in_ch, out_ch, n_rbloc in zip(in_features, out_features, n_rblocks):
             self.layers.append(nn.Sequential(C1dLayer(in_ch,out_ch,3,2,bias=False),
                                              nn.BatchNorm1d(out_ch),
@@ -168,6 +170,7 @@ class Encoder(nn.Module):
                                          nn.Linear(250,32),
                                          nn.BatchNorm1d(32),
                                          nn.LeakyReLU(negative_slope)))
+        #infine calcolo i parametri il reparametrization trick
         self.mu = nn.linear(32, z_dim)
         self.log_var = nn.Linear(32,z_dim)
     
@@ -181,6 +184,7 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, z_dim, negative_slope=0.2, last_lstm=True):
         super(Decoder,self).__init__()
+        #la prima parte è semplicemente una rete speculare all'encoder per la ricostruzione del dato
         self.conT = nn.Sequential(nn.Linear(z_dim,250),
                                   nn.BatchNorm1d(250),
                                   nn.LeakyReLU(negative_slope))
@@ -200,6 +204,8 @@ class Decoder(nn.Module):
                                          nn.BatchNorm1d(out_features[-1]),
                                          nn.LeakyReLU(negative_slope)))
         
+        #decido se come ultimo layer voglio un lstm o un conv1d a seconda del se preferisco 
+        #avere dipendenze temporali a lungo raggio o località
         if last_lstm:
             self.tail = LSTMLayer(out_features[-1], 1, 2)
         else:
