@@ -5,6 +5,7 @@ import numpy as np
 from joblib import Parallel, delayed, cpu_count
 from utils import get_path_list
 from tqdm import tqdm
+import torch.utils.data
 
 def merge_data(path_list, out_dir, seed=0):
     #setto il seed per la riproducibilità
@@ -67,3 +68,30 @@ def make_save_dataset(f_dir, out_dir, ratio=0.2, seed=0):
     print("inizio salvataggio file di train")
     merge_data(tr_paths,tr_dir)
     print("DONE!")
+
+class ClipDS(torch.utils.data.Dataset):
+    def __init__(self, data_dir, band_name, clip_len=250):
+        #creo il path al file
+        file_paths = os.path.join(data_dir,"%s.npy"%band_name)
+        #carico il file contenente tutti i campioni di tutte le bande di tutti i soggetti messi in fila
+        self.data = np.load(file_paths)
+
+        self.band = band_name
+        #prendo il numero di campioni e la sua dimensione
+        self.n_item, self.n_len = self.data.shape
+        #setto la lunghezza del dato voluta
+        self.clip_len = clip_len
+        print("elementi:",self.n_item)
+        print("lunghezza campione:",self.n_len)
+        print("lunghezza voluta clip:", self.clip_len)
+
+    def __getitem__(self, index):
+        #prendo un punto di inizio del dat in maniera tale che rimanga possibile prendere un 
+        #segmento lungo clip_len
+        idx = np.random.randint(0,self.n_len-self.clip_len)
+        #estraggo un segmento lungo clip_len
+        x = self.data[index:index+1, idx: idx+self.clip_len]
+        return x
+    
+    def __len__(self):
+        return self.n_item
