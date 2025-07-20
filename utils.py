@@ -5,6 +5,8 @@ import numpy as np
 from functools import partial
 import itertools as it
 import portion as P
+from functools import wraps
+from inspect import signature
 
 def check_type(p_name, p_value, allowed_types):
     """"
