@@ -7,7 +7,7 @@ from utils import get_path_list
 from tqdm import tqdm
 import torch.utils.data
 
-def merge_data(path_list, out_dir, seed=0):
+def merge_data(path_list, out_dir, seed=0, clip_len=250):
     #setto il seed per la riproducibilità
     np.random.seed(seed)
     #nomino le bande
@@ -16,9 +16,27 @@ def merge_data(path_list, out_dir, seed=0):
     n_jobs = cpu_count()
     #leggo i file
     data = Parallel(n_jobs=n_jobs, backend='loky')(delayed(np.load)(f) for f in tqdm(path_list))
+    #per motivi di poco spazio sulla mia macchina devo fare in questo punto il sempling di segmenti di 1 secondo da quelli da 5
+    data_cut = []
+    for cmp in data:
+        cmp_cut = []
+        for clip in cmp:
+            n_len = clip.shape[1]
+            if n_len < clip_len:
+                print("clip di dimensione: ",n_len)
+                continue  # scarta clip troppo corte
+            start = np.random.randint(0, n_len - clip_len)
+            segment = clip[:, start:(start+clip_len)]
+            if segment.shape[1] == clip_len:
+                cmp_cut.append(segment)
+        if len(cmp_cut) > 0:
+            cmp_cut = np.stack(cmp_cut, axis=0)  
+            data_cut.append(cmp_cut)
+    print(data_cut[0].shape)
+    
     #concateno lungo la dimensione del numero dei campioni ottenendo [n_campioni totale, 6, lunghezza campione]
-    data = np.concatenate(data, axis=0)
-    np.random.shuffle(data)
+    data_cut = np.concatenate(data_cut, axis=0)
+    np.random.shuffle(data_cut)
 
     #salvo 6 file (1 per banda) con la forma [n_campioni totali, lunghezza campione]
     for i, name in enumerate(band_names):
@@ -26,10 +44,10 @@ def merge_data(path_list, out_dir, seed=0):
         #creo il path del file
         out_files = os.path.join(out_dir, name + '.npy')
         #creo il numpy array del file da salvare
-        sx = data[:,i,:]
+        sx = data_cut[:,i,:]
         np.save(out_files, sx)
 
-def make_save_dataset(f_dir, out_dir, ratio=0.2, seed=0):
+def make_save_dataset(f_dir, out_dir, ratio=0.2, seed=0,clip_len=250):
     #se non esiste creo la directory di output
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
@@ -63,10 +81,10 @@ def make_save_dataset(f_dir, out_dir, ratio=0.2, seed=0):
     print("create directory di test e train")
     #popolo la directory di test
     print("inizio salvataggio file di test")
-    merge_data(te_paths, te_dir)
+    merge_data(te_paths, te_dir, seed, clip_len)
     #popolo la directory di train
     print("inizio salvataggio file di train")
-    merge_data(tr_paths,tr_dir)
+    merge_data(tr_paths,tr_dir, seed, clip_len)
     print("DONE!")
 
 class ClipDS(torch.utils.data.Dataset):
