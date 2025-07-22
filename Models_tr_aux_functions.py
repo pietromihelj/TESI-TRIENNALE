@@ -1,4 +1,4 @@
-from sklearn.decomposition import PCA, FastICA
+from sklearn.decomposition import PCA, FastICA, KernelPCA
 import numpy as np
 import pickle
 import os
@@ -30,7 +30,22 @@ def train_fast_ICA(in_dir, out_dir, start_time, end_time):
         ica.fit(tr_data)
         pickle.dump(ica,f)
 
-def train_fast_ICA(in_dir, out_dir, start_time, end_time):
+def train_KPCA(in_dir, out_dir, start_time, end_time):
+    #prendo il path dove salvero l'oggetto
+    out_path = os.path.join(out_dir, "KernelPCA_whole.pkl")
+    if not os.path.isdir(out_dir):
+        raise Exception('Directory di output non esistente, creare la directory prima')
+    #prendo il path ai dati di training
+    tr_path = os.path.join(in_dir,"whole.npy")
+    #prendo i dati di training
+    tr_data = np.load(tr_path)[:,start_time:end_time]
+    #calcolo fastica e lo salvo come oggetto
+    with open(out_path, 'wb') as f:
+        ica = KernelPCA(n_components=z_dims)
+        ica.fit(tr_data)
+        pickle.dump(ica,f)
+
+def train_PCA(in_dir, out_dir, start_time, end_time):
     #identico a sopra ma cambia l'algoritmo che uso in PCA
     out_path = os.path.join(out_dir, "PCA_whole.pkl")
     if not os.path.isdir(out_dir):
@@ -112,12 +127,16 @@ def init_model(model, n_gpus=0, ckpt_file=None):
     return om, aux, device
 
 def get_signal_plot(input_y, output_y, sfreq=250, fig_size=(8,5)):
+    #controllo il tipo e la forma degli input
     if not (isinstance(input_y, np.ndarray) and input_y.ndim == 1 and input_y.shape == output_y.shape):
         raise RuntimeError("y is not supported.")
     
+    #creo il grafico
     fig = plt.figure(figsize=fig_size)
     ax = plt.subplot(111)
+    #creo il supporto per le x
     xt = np.range(0,input_y.shape[0])/sfreq
+    #plot di input e output
     ax.plot(xt, input_y, label='input')
     ax.plot(xt, output_y, label='output')
     ax.legend(fontsize='large')
@@ -125,6 +144,7 @@ def get_signal_plot(input_y, output_y, sfreq=250, fig_size=(8,5)):
     ax.set_ylabel("amp (uV)", fontdict={"fontsize": 15})
     ax.set_xlabel("time (s)", fontdict={"fontsize": 15})
     ax.tick_params(labelsize=15)
+    #salvo il grafico come array numpy
     fig.canvas.draw()
     img = np.array(fig.canvas.renderer.buffer_rgba())
     plt.close(fig)
@@ -139,9 +159,12 @@ def get_signal_plots(input_y, output_y, sfreq, fig_size=(8,5)):
     return np.stack(list(out), axis=0)
 
 def batch_imgs(input_y, output_y, sfreq, num, n_row, fig_size=(8, 5)):
+    #prendo i plot della batch
     z = get_signal_plots(input_y[0:num, :], output_y[0:num, :], sfreq, fig_size)
+    #modifico la forma degli array per averli con le dimensioni in un ordine accettato da torch
     img = make_grid(torch.tensor(np.transpose(z, (0, 3, 1, 2))), nrow=n_row, pad_value=0, padding=4)
     a = img.numpy()
+    #li salvo come un array contiguo
     return np.ascontiguousarray(np.transpose(a, (1, 2, 0)))
 
 def save_loss_per_line(file, line, header):
@@ -214,28 +237,34 @@ class train_VAEEG():
                 current_step = current_step+1
                 #passo i dati nel modello
                 mu, log_var, x_rec = self.model(input)
+                #calcolo loss
                 kld = md.kl_loss(mu,log_var)
                 rec = md.recon_loss(input,x_rec)
                 loss = beta*kld+rec
 
+                #backward
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
             if current_epoch % n_print == 0:
+                #scrivo i file di log per la loss
                 writer.add_scalar('loss', loss, current_epoch)
                 writer.add_scalar('kld_loss', kld, current_epoch)
                 writer.add_scalar('rec_loss', rec, current_epoch)
 
+                #scrivo il file di log per MAE
                 error = input-x_rec
                 error = error.abs().mean()
                 writer.add_scalar('MAE_error', error, current_epoch)
 
+                #scrivo il file di log per pearson
                 pr = self.pearson_index(input,x_rec)
                 writer.add_scalar('pearsonr', pr.mean(), current_epoch)
 
                 cycle_time = (time.time()-start_time)/n_print
 
+                #print dei valori di interesse per vedere come sta andando il modello
                 values = (current_epoch, current_step, cycle_time,
                               loss.to(torch.device("cpu")).detach().numpy(),
                               kld.to(torch.device("cpu")).detach().numpy(),
@@ -245,15 +274,18 @@ class train_VAEEG():
                 names = ["current_epoch", "current_step", "cycle_time", "loss", "kld_loss", "rec_loss","error", "pr"]
                 print("[Epoch %d, Step %d]: (%.3f s / cycle])\n""  loss: %.3f; kld_loss: %.3f; rec: %.3f;\n""  mae error: %.3f; pr: %.3f.\n"% values)
                 
+                #salvo le immagini nel log file
                 img = batch_imgs(input.to(torch.device("cpu")).detach().numpy()[:, 0, :], x_rec.to(torch.device("cpu")).detach().numpy()[:, 0, :],250, 4, 2, fig_size=(8, 5))
                 writer.add_images('signal', img, current_epoch, dataformats='HWC')
                 
                 start_time = time.time()
                 
+                #salvo le loss nel file loss.csv
                 n_float = len(values)-2
                 fmt_str = "%d,%d" + ",%.3f" * n_float
                 save_loss_per_line(loss_file, fmt_str % values, ",".join(names))
             
+            #salvo il modello
             out_ckpt_file = os.path.join(model_dir, "ckpt_epoch_%d.ckpt" % current_epoch)
             save_model(self.model, out_file=out_ckpt_file,auxiliary=dict(current_step=current_step,current_epoch=current_epoch))
         writer.close()
