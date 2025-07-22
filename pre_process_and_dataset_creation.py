@@ -10,7 +10,7 @@ import time
 import os
 
 #creo la lista dei path dei file contenenti gli eeg
-path_list = u.get_path_list('D:/isip.piconepress.com/projects/nedc/data/tuh_eeg/tuh_eeg_abnormal/v3.0.1/edf',['.edf'],True)
+path_list = u.get_path_list('/u/pmihelj/isip.piconepress.com/projects/nedc/data/tuh_eeg/tuh_eeg_abnormal/v3.0.1/edf',['.edf'],True)
 #print di controllo
 print(type(path_list))
 print(path_list.shape)
@@ -36,8 +36,8 @@ def worker(in_file, out_dir, out_prefix):
 
 #definisco i path delle variabili
 md_file = "path.csv"
-out_dir = "D:/raw_data5s"
-log_file = "D:/raw_data5s/log.csv"
+out_dir = "/u/pmihelj/TESI-TRIENNALE/raw_data"
+log_file = "/u/pmihelj/TESI-TRIENNALE/raw_data/log.csv"
 
 #se non esiste creo la directory di output
 if not os.path.isdir(out_dir):
@@ -68,6 +68,6 @@ print("number of channels: ", Counter(chans))
 print("different frequencies: ", Counter(freqs)) 
 
 #creo le directory contenenti i datasets di train e test
-files_directory = "D:/raw_data5s"
-out_directory = "D:/Dataset5s"
+files_directory = "/u/pmihelj/TESI-TRIENNALE/raw_data"
+out_directory = "/u/pmihelj/TESI-TRIENNALE/dataset"
 dt.make_save_dataset(f_dir=files_directory, out_dir=out_directory)

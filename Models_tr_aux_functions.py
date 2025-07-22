@@ -5,6 +5,12 @@ import os
 import torch
 from utils import check_type, type_assert
 import warnings
+from torch.utils.tensorboard import SummaryWriter
+from torchvision.utils import make_grid
+import itertools as it
+import time
+import model as md
+import matplotlib.pyplot as plt
 
 
 z_dims = 50
@@ -105,6 +111,61 @@ def init_model(model, n_gpus=0, ckpt_file=None):
     
     return om, aux, device
 
+def get_signal_plot(input_y, output_y, sfreq=250, fig_size=(8,5)):
+    if not (isinstance(input_y, np.ndarray) and input_y.ndim == 1 and input_y.shape == output_y.shape):
+        raise RuntimeError("y is not supported.")
+    
+    fig = plt.figure(figsize=fig_size)
+    ax = plt.subplot(111)
+    xt = np.range(0,input_y.shape[0])/sfreq
+    ax.plot(xt, input_y, label='input')
+    ax.plot(xt, output_y, label='output')
+    ax.legend(fontsize='large')
+    ax.grid(axis='x', linstile='-.', linewidth=1, wich='both')
+    ax.set_ylabel("amp (uV)", fontdict={"fontsize": 15})
+    ax.set_xlabel("time (s)", fontdict={"fontsize": 15})
+    ax.tick_params(labelsize=15)
+    fig.canvas.draw()
+    img = np.array(fig.canvas.renderer.buffer_rgba())
+    plt.close(fig)
+    return img
+
+
+def get_signal_plots(input_y, output_y, sfreq, fig_size=(8,5)):
+    if not (isinstance(input_y, np.ndarray) and input_y.ndim == 2 and input_y.shape == output_y.shape):
+        raise RuntimeError('y is not supported')
+    #per ogni coppia in-out creo il grafico con get_signal_plot, poi li rendo una lista e li concateno
+    out = map(lambda a: get_signal_plot(a[0], a[1], sfreq, fig_size), zip(input_y, output_y))
+    return np.stack(list(out), axis=0)
+
+def batch_imgs(input_y, output_y, sfreq, num, n_row, fig_size=(8, 5)):
+    z = get_signal_plots(input_y[0:num, :], output_y[0:num, :], sfreq, fig_size)
+    img = make_grid(torch.tensor(np.transpose(z, (0, 3, 1, 2))), nrow=n_row, pad_value=0, padding=4)
+    a = img.numpy()
+    return np.ascontiguousarray(np.transpose(a, (1, 2, 0)))
+
+def save_loss_per_line(file, line, header):
+    if os.path.isfile(file):
+        #leggo il file e controllo che sia vuoto
+        with open(file, "r") as fi:
+            dat = [line.strip() for line in fi.readlines() if line.strip() != ""]
+
+        # se il file è vuoto o ha un header sbagliato lo scrivo/sovrascrivo
+        if len(dat) == 0 or dat[0] != header:
+            with open(file, "w") as fo:
+                print(header, file=fo)
+                print(line, file=fo)
+        else:
+            #se no scrivo solo la riga
+            with open(file, "a") as fo:
+                print(line, file=fo)
+    else:
+        #se il file non esiste lo creo e lo popolo
+        with open(file, "w") as fo:
+            print(header, file=fo)
+            print(line, file=fo)
+
+ 
 class train_VAEEG():
     def __init__(self, in_model, n_gpus, ckpt_file = None):
         #inizializzo il modello con la funzione preposta
@@ -126,3 +187,73 @@ class train_VAEEG():
         r = (mxy - mx * my) / torch.sqrt((mxx - mx ** 2) * (myy - my ** 2))
         return r
     
+    def train(self, input_loader, model_dir, n_epochs, lr, beta, n_print):
+        #creo la directori dove salvare le informazioni sul modello
+        summary_dir = os.path.join(model_dir,'save')
+        if not os.path.isdir(summary_dir):
+            os.makedirs(summary_dir)
+        #creo il csv dove salvero le loss
+        loss_file = os.path.join(model_dir, 'train_loss.csv')
+        writer = SummaryWriter(summary_dir)
+
+        #carico il punto a cui sono arrivato con il training
+        current_epoch = self.aux.get("current_epoch", 0)
+        current_step = self.aux.get("current_step",0)
+
+        #creo l'optimizer
+        optimizer = torch.optim.RMSprop(it.chain(self.model.encoder.parameters(), self.model.decoder.parameters()), lr=lr)
+
+        #setto il modello in modalità train
+        self.model.train()
+        start_time = time.time()
+
+        #inizio il training
+        for epoch in range(n_epochs):
+            current_epoch = current_epoch+1
+            for idx, input in enumerate(input_loader, 0):
+                current_step = current_step+1
+                #passo i dati nel modello
+                mu, log_var, x_rec = self.model(input)
+                kld = md.kl_loss(mu,log_var)
+                rec = md.recon_loss(input,x_rec)
+                loss = beta*kld+rec
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+            if current_epoch % n_print == 0:
+                writer.add_scalar('loss', loss, current_epoch)
+                writer.add_scalar('kld_loss', kld, current_epoch)
+                writer.add_scalar('rec_loss', rec, current_epoch)
+
+                error = input-x_rec
+                error = error.abs().mean()
+                writer.add_scalar('MAE_error', error, current_epoch)
+
+                pr = self.pearson_index(input,x_rec)
+                writer.add_scalar('pearsonr', pr.mean(), current_epoch)
+
+                cycle_time = (time.time()-start_time)/n_print
+
+                values = (current_epoch, current_step, cycle_time,
+                              loss.to(torch.device("cpu")).detach().numpy(),
+                              kld.to(torch.device("cpu")).detach().numpy(),
+                              rec.to(torch.device("cpu")).detach().numpy(),
+                              error.to(torch.device("cpu")).detach().numpy(),
+                              pr.mean().to(torch.device("cpu")).detach().numpy())
+                names = ["current_epoch", "current_step", "cycle_time", "loss", "kld_loss", "rec_loss","error", "pr"]
+                print("[Epoch %d, Step %d]: (%.3f s / cycle])\n""  loss: %.3f; kld_loss: %.3f; rec: %.3f;\n""  mae error: %.3f; pr: %.3f.\n"% values)
+                
+                img = batch_imgs(input.to(torch.device("cpu")).detach().numpy()[:, 0, :], x_rec.to(torch.device("cpu")).detach().numpy()[:, 0, :],250, 4, 2, fig_size=(8, 5))
+                writer.add_images('signal', img, current_epoch, dataformats='HWC')
+                
+                start_time = time.time()
+                
+                n_float = len(values)-2
+                fmt_str = "%d,%d" + ",%.3f" * n_float
+                save_loss_per_line(loss_file, fmt_str % values, ",".join(names))
+            
+            out_ckpt_file = os.path.join(model_dir, "ckpt_epoch_%d.ckpt" % current_epoch)
+            save_model(self.model, out_file=out_ckpt_file,auxiliary=dict(current_step=current_step,current_epoch=current_epoch))
+        writer.close()
