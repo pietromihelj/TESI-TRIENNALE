@@ -70,21 +70,26 @@ def make_save_dataset(f_dir, out_dir, ratio=0.2, seed=0,clip_len=250):
         json.dump({"train":tr_paths, "test":te_paths}, fp=fo, indent=1)
 
     #creo la directory di test se non esiste
-    te_dir = os.path.join(out_dir,"test")
-    if not os.path.isdir(te_dir):
-        os.makedirs(te_dir)
+    if ratio != 0:
+        te_dir = os.path.join(out_dir,"test")
+        if not os.path.isdir(te_dir):
+            os.makedirs(te_dir)
     
     #creo la directory di train se non esiste
-    tr_dir = os.path.join(out_dir,"train")
-    if not os.path.isdir(tr_dir):
-        os.makedirs(tr_dir)
+    if ratio != 1.0:
+        tr_dir = os.path.join(out_dir,"train")
+        if not os.path.isdir(tr_dir):
+            os.makedirs(tr_dir)
+
     print("create directory di test e train")
     #popolo la directory di test
-    print("inizio salvataggio file di test")
-    merge_data(te_paths, te_dir, seed, clip_len)
+    if ratio != 0:
+        print("inizio salvataggio file di test")
+        merge_data(te_paths, te_dir, seed, clip_len)
     #popolo la directory di train
-    print("inizio salvataggio file di train")
-    merge_data(tr_paths,tr_dir, seed, clip_len)
+    if ratio != 1.0:
+        print("inizio salvataggio file di train")
+        merge_data(tr_paths,tr_dir, seed, clip_len)
     print("DONE!")
 
 class ClipDS(torch.utils.data.Dataset):
