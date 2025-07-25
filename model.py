@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.autograd import Variable
 
 class C1dLayer(nn.Module):
     #la classe implementa semplicemente un padding certo per avere l'output  
@@ -166,15 +167,15 @@ class Encoder(nn.Module):
             for _ in range(n_rbloc):
                 self.layers.append(ResBlock(out_ch,out_ch,3,1,negative_slope))
         self.layers.append(nn.Sequential(nn.Flatten(1),
-                                         nn.Linear(250,32),
+                                         nn.Linear(32*8,32),
                                          nn.BatchNorm1d(32),
                                          nn.LeakyReLU(negative_slope)))
         #infine calcolo i parametri il reparametrization trick
-        self.mu = nn.linear(32, z_dim)
+        self.mu = nn.Linear(32, z_dim)
         self.log_var = nn.Linear(32,z_dim)
     
     def forward(self, x):
-        for L in self.layers:
+        for i,L in enumerate(self.layers):
             x = L(x)
         mu = self.mu(x)
         log_var = self.log_var(x)
@@ -184,8 +185,8 @@ class Decoder(nn.Module):
     def __init__(self, z_dim, negative_slope=0.2, last_lstm=True):
         super(Decoder,self).__init__()
         #la prima parte è semplicemente una rete speculare all'encoder per la ricostruzione del dato
-        self.conT = nn.Sequential(nn.Linear(z_dim,250),
-                                  nn.BatchNorm1d(250),
+        self.conT = nn.Sequential(nn.Linear(z_dim,32*8),
+                                  nn.BatchNorm1d(32*8),
                                   nn.LeakyReLU(negative_slope))
         in_features = [32, 32, 24, 16, 16]
         out_features = [32, 24, 16, 16, 8]
@@ -211,7 +212,9 @@ class Decoder(nn.Module):
             self.tail = nn.Sequential(C1dLayer(out_features[-1], out_features[-1] // 2, 5, 1, bias=True),
                                       nn.BatchNorm1d(out_features[-1] // 2),
                                       nn.LeakyReLU(negative_slope),
-                                      C1dLayer(out_features[-1] // 2, 1, 3, 1, bias=True))
+                                      C1dLayer(out_features[-1] // 2, 1, 3, 1, bias=True),
+                                      #layer per ritornare alle corretta dimensione dell'input
+                                      nn.Conv1d(in_channels=1, out_channels=1, kernel_size=7, stride=1))
         self.last_lstm = last_lstm
 
     def forward(self, x):
@@ -226,6 +229,7 @@ class Decoder(nn.Module):
             x = torch.permute(x,(2,0,1))
             x = self.tail(x)
             x = torch.permute(x,(1,2,0))
+            x = nn.Conv1d(in_channels=1, out_channels=1, kernel_size=7, stride=1)(x)
         else:
             x = self.tail(x)
         return x

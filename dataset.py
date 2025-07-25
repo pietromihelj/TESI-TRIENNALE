@@ -70,32 +70,28 @@ def make_save_dataset(f_dir, out_dir, ratio=0.2, seed=0,clip_len=250):
         json.dump({"train":tr_paths, "test":te_paths}, fp=fo, indent=1)
 
     #creo la directory di test se non esiste
-    if ratio != 0:
-        te_dir = os.path.join(out_dir,"test")
-        if not os.path.isdir(te_dir):
-            os.makedirs(te_dir)
+    te_dir = os.path.join(out_dir,"test")
+    if not os.path.isdir(te_dir):
+        os.makedirs(te_dir)
     
     #creo la directory di train se non esiste
-    if ratio != 1.0:
-        tr_dir = os.path.join(out_dir,"train")
-        if not os.path.isdir(tr_dir):
-            os.makedirs(tr_dir)
-
+    tr_dir = os.path.join(out_dir,"train")
+    if not os.path.isdir(tr_dir):
+        os.makedirs(tr_dir)
     print("create directory di test e train")
     #popolo la directory di test
-    if ratio != 0:
-        print("inizio salvataggio file di test")
-        merge_data(te_paths, te_dir, seed, clip_len)
+    print("inizio salvataggio file di test")
+    merge_data(te_paths, te_dir, seed, clip_len)
     #popolo la directory di train
-    if ratio != 1.0:
-        print("inizio salvataggio file di train")
-        merge_data(tr_paths,tr_dir, seed, clip_len)
+    print("inizio salvataggio file di train")
+    merge_data(tr_paths,tr_dir, seed, clip_len)
     print("DONE!")
 
 class ClipDS(torch.utils.data.Dataset):
     def __init__(self, data_dir, band_name, clip_len=250):
         #creo il path al file
         file_paths = os.path.join(data_dir,"%s.npy"%band_name)
+        print('path: ',file_paths) 
         #carico il file contenente tutti i campioni di tutte le bande di tutti i soggetti messi in fila
         self.data = np.load(file_paths)
 
@@ -111,7 +107,10 @@ class ClipDS(torch.utils.data.Dataset):
     def __getitem__(self, index):
         #prendo un punto di inizio del dat in maniera tale che rimanga possibile prendere un 
         #segmento lungo clip_len
-        idx = np.random.randint(0,self.n_len-self.clip_len)
+        if self.n_len == self.clip_len:
+           idx=0
+        else:
+           idx = np.random.randint(0,self.n_len-self.clip_len)
         #estraggo un segmento lungo clip_len
         x = self.data[index:index+1, idx: idx+self.clip_len]
         return x

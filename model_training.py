@@ -1,5 +1,4 @@
 import argparse
-import yaml
 import os
 from model import VAEEG
 from Models_tr_aux_functions import train_VAEEG
@@ -7,33 +6,65 @@ from dataset import ClipDS
 import torch
 
 parser = argparse.ArgumentParser(description='Training Model')
-parser.add_argument('--yamal_file', type=str, required=True, help='configuers, path of .yaml fil')
+parser.add_argument('--model_dir', type=str, required=True, help='model_dir')
+parser.add_argument('--in_channels', type=int, required=True, help='in_channels')
 parser.add_argument('--z_dim', type=int, required=True, help='z_dim')
+parser.add_argument('--negative_slope', type=float, required=False, help='negative_slope', default=0.2)
+parser.add_argument('--decoder_last_lstm', type=bool, required=False, help='decoder_last_lstm', default=True)
+parser.add_argument('--n_gpus', type=int, required=False, help='n_gpus', default=0)
+parser.add_argument('--ckpt_file', type=str, required=False, help='ckpt_file', default=None)
+parser.add_argument('--data_dir', type=str, required=True, help='data_dir')
+parser.add_argument('--band_name', type=str, required=True, help='band_name')
+parser.add_argument('--clip_len', type=int, required=False, help='clip_len', default=250)
+parser.add_argument('--batch_size', type=int, required=True, help='batch_size')
+parser.add_argument('--n_epochs', type=int, required=True, help='n_epochs')
+parser.add_argument('--lr', type=float, required=True, help='lr')
+parser.add_argument('--beta', type=float, required=True, help='beta')
+parser.add_argument('--n_print', type=int, required=True, help='n_print')
 
 opts = parser.parse_args()
 
-with open(opts.yamal_file, 'r') as file:
-    configs = yaml.safe_loads(file)
+model_dir = opts.model_dir
+in_channels = opts.in_channels
+z_dim = opts.z_dim
+negative_slope = opts.negative_slope
+decoder_last_lstm = opts.decoder_last_lstm
+n_gpus = opts.n_gpus
+ckpt_file = opts.ckpt_file
+data_dir = opts.data_dir
+band_name = opts.band_name
+clip_len = opts.clip_len
+batch_size = opts.batch_size
+n_epochs = opts.n_epochs
+lr = opts.lr
+beta = opts.beta
+n_print = opts.n_print
 
-train_params = configs['Train']
-model_params = configs['Model']
-datset_params = configs['DataSet']
-model_params['z_dim'] = opts.z_dim
+print('DEBUG: tutte le variabili assegnate')
 
-if not os.path.isdir(train_params['model_dir']):
-    os.makedirs(train_params['model_dir'])
+if not os.path.isdir(model_dir):
+    os.makedirs(model_dir)
 
-model = VAEEG(in_channels=model_params['in_channels'],
-              z_dim=model_params['z_dim'],
-              negative_slope=model_params['negative_slope'],
-              decoder_last_lstm=model_params['decoder_last_lstm'])
+model = VAEEG(in_channels=in_channels,
+              z_dim=z_dim,
+              negative_slope=negative_slope,
+              decoder_last_lstm=decoder_last_lstm)
 
-trainer = train_VAEEG(model, train_params['n_gpus'], train_params['ckpt_file'])
-m_dir = os.path.join(train_params['model_dir'], "%s_z%d" % (os.path.basename(os.path.splitext(opts.yaml_file)[0]),opts.z_dim))
+print('DEBUG: modello creato')
 
-train_ds = ClipDS(data_dir=datset_params['data_dir'],
-                  band_name=model_params['band_name'],
-                  clip_len=datset_params['clip_len'])
+trainer = train_VAEEG(model, n_gpus=n_gpus, ckpt_file=ckpt_file)
+m_dir = os.path.join(model_dir, "%s_%s_z%d" % ('VAEEG','Band_name',opts.z_dim))
 
-train_loader = torch.utils.data.DataLoader(train_ds, shuffle=True, batch_size=datset_params['batch_size'], drop_last=True, num_workers=0)
-trainer.train(input_loader=train_loader, model_dir=m_dir, n_epochs=train_params['n_epochs'],lr=train_params['lr'],beta=train_params['beta'],n_print=train_params['n_print'])
+print('DEBUG: trainer creato')
+
+train_ds = ClipDS(data_dir=data_dir,
+                  band_name=band_name,
+                  clip_len=clip_len)
+
+print('DEBUG: dataset creato')
+
+train_loader = torch.utils.data.DataLoader(train_ds, shuffle=True, batch_size=batch_size, drop_last=True, num_workers=0)
+
+print('DEBUG: train loader creato')
+print('DEBUG: inizio training')
+trainer.train(input_loader=train_loader, model_dir=m_dir, n_epochs=n_epochs,lr=lr,beta=beta,n_print=n_print)

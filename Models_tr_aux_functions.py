@@ -12,7 +12,6 @@ import time
 import model as md
 import matplotlib.pyplot as plt
 
-
 z_dims = 50
 
 def train_fast_ICA(in_dir, out_dir, start_time, end_time):
@@ -58,7 +57,7 @@ def train_PCA(in_dir, out_dir, start_time, end_time):
         pickle.dump(pca,f)
 
 
-@type_assert(model=torch.nn.Module, ckpt_files=str)
+@type_assert(model=torch.nn.Module, ckpt_file=str)
 def load_model(model, ckpt_file):
     #funzione per caricare un modello i cui pesi sono salvati in ckpt_file
     state_dict = torch.load(ckpt_file, map_location=torch.device('cpu'))
@@ -224,7 +223,10 @@ class train_VAEEG():
         current_step = self.aux.get("current_step",0)
 
         #creo l'optimizer
-        optimizer = torch.optim.RMSprop(it.chain(self.model.encoder.parameters(), self.model.decoder.parameters()), lr=lr)
+        if isinstance(self.model, torch.nn.DataParallel):
+           optimizer = torch.optim.RMSprop(it.chain(self.model.module.encoder.parameters(), self.model.module.decoder.parameters()), lr=lr)
+        else:
+           optimizer = torch.optim.RMSprop(it.chain(self.model.encoder.parameters(), self.model.decoder.parameters()), lr=lr)
 
         #setto il modello in modalità train
         self.model.train()
@@ -234,8 +236,9 @@ class train_VAEEG():
         for epoch in range(n_epochs):
             current_epoch = current_epoch+1
             for idx, input in enumerate(input_loader, 0):
+                torch.cuda.empty_cache()
                 current_step = current_step+1
-                #passo i dati nel modello
+                #passo i dati nel modello 
                 mu, log_var, x_rec = self.model(input)
                 #calcolo loss
                 kld = md.kl_loss(mu,log_var)
@@ -287,5 +290,5 @@ class train_VAEEG():
             
             #salvo il modello
             out_ckpt_file = os.path.join(model_dir, "ckpt_epoch_%d.ckpt" % current_epoch)
-            save_model(self.model, out_file=out_ckpt_file,auxiliary=dict(current_step=current_step,current_epoch=current_epoch))
+            save_model(self.model, out_file=out_ckpt_file, auxiliary=dict(current_step=current_step,current_epoch=current_epoch))
         writer.close()

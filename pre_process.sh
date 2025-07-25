@@ -12,8 +12,11 @@
 #SBATCH --output=slurm-wide-%j.out
 #SBATCH --error=slurm-wide-%j.err
 #
-#CONDA_BASE_ACTIVATE_SCRIPT="/opt/spack/opt/spack/linux-rocky9-x86_64/gcc-13.2.0/miniconda3-22.11.1-tn534fvb4uy4wrf7m2zcwpiycdzlebd6/bin/activate"
-#ENV_NAME="my_tesy_env"
-source "$CONDA_BASE_ACTIVATE_SCRIPT" "$ENV_NAME"
+source /opt/spack/opt/spack/linux-rocky9-x86_64/gcc-13.2.0/miniconda3-22.11.1-tn534fvb4uy4wrf7m2zcwpiycdzlebd6/bin/activate my_tesy_env
 cd /u/pmihelj/TESI-TRIENNALE
-python3 pre_process_and_dataset_creation.py
+python3 pre_process_and_dataset_creation.py \
+--input_edf_dir "/u/pmihelj/nchsdb/sleep_data"\
+--output_raw_data_dir "/u/pmihelj/raw_datas/sleep_raw"\
+--output_dataset_dir "/u/pmihelj/datasets/sleep_dataset"\
+--log_file_path "/u/pmihelj/raw_datas/sleep_raw/log.csv"\
+--num_cpus "$SLURM_CPUS_PER_TASK"
