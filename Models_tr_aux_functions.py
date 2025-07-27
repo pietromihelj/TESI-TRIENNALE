@@ -4,7 +4,6 @@ import pickle
 import os
 import torch
 from utils import check_type, type_assert
-import warnings
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
 import itertools as it
@@ -102,7 +101,7 @@ def init_model(model, n_gpus=0, ckpt_file=None):
             aux = load_model(model, ckpt_file)
         else:
             #se no inizializzo un modello con pesi casuali
-            warnings.warn("The given checkpoint file is not found: %s. "
+            print("The given checkpoint file is not found: %s. "
                           "Initial model randomly instead." % ckpt_file)
             aux = {}
     else:
