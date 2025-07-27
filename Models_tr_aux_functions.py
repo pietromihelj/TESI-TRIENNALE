@@ -4,6 +4,7 @@ import pickle
 import os
 import torch
 from utils import check_type, type_assert
+
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
 import itertools as it
@@ -133,12 +134,12 @@ def get_signal_plot(input_y, output_y, sfreq=250, fig_size=(8,5)):
     fig = plt.figure(figsize=fig_size)
     ax = plt.subplot(111)
     #creo il supporto per le x
-    xt = np.range(0,input_y.shape[0])/sfreq
+    xt = np.arange(0,input_y.shape[0])/sfreq
     #plot di input e output
     ax.plot(xt, input_y, label='input')
     ax.plot(xt, output_y, label='output')
     ax.legend(fontsize='large')
-    ax.grid(axis='x', linstile='-.', linewidth=1, wich='both')
+    ax.grid(axis='x', linestyle='-.', linewidth=1, which='both')
     ax.set_ylabel("amp (uV)", fontdict={"fontsize": 15})
     ax.set_xlabel("time (s)", fontdict={"fontsize": 15})
     ax.tick_params(labelsize=15)
@@ -233,6 +234,7 @@ class train_VAEEG():
 
         #inizio il training
         for epoch in range(n_epochs):
+            print('DEBUG: entrato nella epoca: ', epoch)
             current_epoch = current_epoch+1
             for idx, input in enumerate(input_loader, 0):
                 torch.cuda.empty_cache()
@@ -249,45 +251,45 @@ class train_VAEEG():
                 loss.backward()
                 optimizer.step()
 
-            if current_epoch % n_print == 0:
-                #scrivo i file di log per la loss
-                writer.add_scalar('loss', loss, current_epoch)
-                writer.add_scalar('kld_loss', kld, current_epoch)
-                writer.add_scalar('rec_loss', rec, current_epoch)
+                if current_step % n_print == 0:
+                    #scrivo i file di log per la loss
+                    writer.add_scalar('loss', loss, current_epoch, current_step)
+                    writer.add_scalar('kld_loss', kld, current_epoch,current_step)
+                    writer.add_scalar('rec_loss', rec, current_epoch, current_step)
 
-                #scrivo il file di log per MAE
-                error = input-x_rec
-                error = error.abs().mean()
-                writer.add_scalar('MAE_error', error, current_epoch)
+                    #scrivo il file di log per MAE
+                    error = input-x_rec
+                    error = error.abs().mean()
+                    writer.add_scalar('MAE_error', error, current_epoch, current_step)
 
-                #scrivo il file di log per pearson
-                pr = self.pearson_index(input,x_rec)
-                writer.add_scalar('pearsonr', pr.mean(), current_epoch)
+                    #scrivo il file di log per pearson
+                    pr = self.pearson_index(input,x_rec)
+                    writer.add_scalar('pearsonr', pr.mean(), current_epoch, current_step)
 
-                cycle_time = (time.time()-start_time)/n_print
+                    cycle_time = (time.time()-start_time)/n_print
 
-                #print dei valori di interesse per vedere come sta andando il modello
-                values = (current_epoch, current_step, cycle_time,
-                              loss.to(torch.device("cpu")).detach().numpy(),
-                              kld.to(torch.device("cpu")).detach().numpy(),
-                              rec.to(torch.device("cpu")).detach().numpy(),
-                              error.to(torch.device("cpu")).detach().numpy(),
-                              pr.mean().to(torch.device("cpu")).detach().numpy())
-                names = ["current_epoch", "current_step", "cycle_time", "loss", "kld_loss", "rec_loss","error", "pr"]
-                print("[Epoch %d, Step %d]: (%.3f s / cycle])\n""  loss: %.3f; kld_loss: %.3f; rec: %.3f;\n""  mae error: %.3f; pr: %.3f.\n"% values)
+                    #print dei valori di interesse per vedere come sta andando il modello
+                    values = (current_epoch, current_step, cycle_time,
+                                    loss.to(torch.device("cpu")).detach().numpy(),
+                                    kld.to(torch.device("cpu")).detach().numpy(),
+                                    rec.to(torch.device("cpu")).detach().numpy(),
+                                    error.to(torch.device("cpu")).detach().numpy(),
+                                    pr.mean().to(torch.device("cpu")).detach().numpy())
+                    names = ["current_epoch", "current_step", "cycle_time", "loss", "kld_loss", "rec_loss","error", "pr"]
+                    print("[Epoch %d, Step %d]: (%.3f s / cycle])\n""  loss: %.3f; kld_loss: %.3f; rec: %.3f;\n""  mae error: %.3f; pr: %.3f.\n"% values)
+                    
+                    #salvo le immagini nel log file
+                    img = batch_imgs(input.to(torch.device("cpu")).detach().numpy()[:, 0, :], x_rec.to(torch.device("cpu")).detach().numpy()[:, 0, :],250, 4, 2, fig_size=(8, 5))
+                    writer.add_images('signal', img, current_epoch, current_step, dataformats='HWC')
+                    
+                    start_time = time.time()
+                    
+                    #salvo le loss nel file loss.csv
+                    n_float = len(values)-2
+                    fmt_str = "%d,%d" + ",%.3f" * n_float
+                    save_loss_per_line(loss_file, fmt_str % values, ",".join(names))
                 
-                #salvo le immagini nel log file
-                img = batch_imgs(input.to(torch.device("cpu")).detach().numpy()[:, 0, :], x_rec.to(torch.device("cpu")).detach().numpy()[:, 0, :],250, 4, 2, fig_size=(8, 5))
-                writer.add_images('signal', img, current_epoch, dataformats='HWC')
-                
-                start_time = time.time()
-                
-                #salvo le loss nel file loss.csv
-                n_float = len(values)-2
-                fmt_str = "%d,%d" + ",%.3f" * n_float
-                save_loss_per_line(loss_file, fmt_str % values, ",".join(names))
-            
-            #salvo il modello
-            out_ckpt_file = os.path.join(model_dir, "ckpt_epoch_%d.ckpt" % current_epoch)
-            save_model(self.model, out_file=out_ckpt_file, auxiliary=dict(current_step=current_step,current_epoch=current_epoch))
-        writer.close()
+                #salvo il modello
+                out_ckpt_file = os.path.join(model_dir, "ckpt_epoch_%d_%d.ckpt" % (current_epoch, current_step))
+                save_model(self.model, out_file=out_ckpt_file, auxiliary=dict(current_step=current_step,current_epoch=current_epoch))
+            writer.close()

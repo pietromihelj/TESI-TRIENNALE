@@ -53,7 +53,7 @@ model = VAEEG(in_channels=in_channels,
 print('DEBUG: modello creato')
 
 trainer = train_VAEEG(model, n_gpus=n_gpus, ckpt_file=ckpt_file)
-m_dir = os.path.join(model_dir, "%s_%s_z%d" % ('VAEEG','Band_name',opts.z_dim))
+m_dir = os.path.join(model_dir, "%s_%s_z%d" % ('VAEEG',band_name,opts.z_dim))
 
 print('DEBUG: trainer creato')
 
