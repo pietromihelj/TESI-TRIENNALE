@@ -288,8 +288,8 @@ class train_VAEEG():
                     n_float = len(values)-2
                     fmt_str = "%d,%d" + ",%.3f" * n_float
                     save_loss_per_line(loss_file, fmt_str % values, ",".join(names))
-                
-                #salvo il modello
-                out_ckpt_file = os.path.join(model_dir, "ckpt_epoch_%d_%d.ckpt" % (current_epoch, current_step))
-                save_model(self.model, out_file=out_ckpt_file, auxiliary=dict(current_step=current_step,current_epoch=current_epoch))
+
+                    #salvoil modello
+                    out_ckpt_file = os.path.join(model_dir, "ckpt_epoch_%d_%d.ckpt" % (current_epoch, current_step))
+                    save_model(self.model, out_file=out_ckpt_file, auxiliary=dict(current_step=current_step,current_epoch=current_epoch))
             writer.close()
