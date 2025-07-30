@@ -13,9 +13,9 @@ import matplotlib.pyplot as plt
 
 z_dims = 50
 
-def train_fast_ICA(in_dir, out_dir, start_time, end_time):
+def train_fast_ICA(in_dir, out_dir, start_time, end_time, alghoritm, fun):
     #prendo il path dove salvero l'oggetto
-    out_path = os.path.join(out_dir, "FastICA_whole.pkl")
+    out_path = os.path.join(out_dir,alghoritm+fun+"FastICA_whole.pkl")
     if not os.path.isdir(out_dir):
         raise Exception('Directory di output non esistente, creare la directory prima')
     #prendo il path ai dati di training
@@ -24,13 +24,13 @@ def train_fast_ICA(in_dir, out_dir, start_time, end_time):
     tr_data = np.load(tr_path)[:,start_time:end_time]
     #calcolo fastica e lo salvo come oggetto
     with open(out_path, 'wb') as f:
-        ica = FastICA(n_components=z_dims)
+        ica = FastICA(n_components=z_dims, algorithm=alghoritm, fun=fun)
         ica.fit(tr_data)
         pickle.dump(ica,f)
 
-def train_KPCA(in_dir, out_dir, start_time, end_time):
+def train_KPCA(in_dir, out_dir, start_time, end_time, kernel, alpha):
     #prendo il path dove salvero l'oggetto
-    out_path = os.path.join(out_dir, "KernelPCA_whole.pkl")
+    out_path = os.path.join(out_dir,kernel+str(alpha)+"KernelPCA_whole.pkl")
     if not os.path.isdir(out_dir):
         raise Exception('Directory di output non esistente, creare la directory prima')
     #prendo il path ai dati di training
@@ -39,7 +39,7 @@ def train_KPCA(in_dir, out_dir, start_time, end_time):
     tr_data = np.load(tr_path)[:,start_time:end_time]
     #calcolo fastica e lo salvo come oggetto
     with open(out_path, 'wb') as f:
-        ica = KernelPCA(n_components=z_dims)
+        ica = KernelPCA(n_components=z_dims, kernel=kernel, alpha=alpha)
         ica.fit(tr_data)
         pickle.dump(ica,f)
 
