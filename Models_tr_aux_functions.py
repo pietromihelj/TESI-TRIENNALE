@@ -1,4 +1,6 @@
 from sklearn.decomposition import PCA, FastICA, KernelPCA
+from sklearn.kernel_approximation import Nystroem, RBFSampler
+from sklearn. pipeline import Pipeline
 import numpy as np
 import pickle
 import os
@@ -37,11 +39,24 @@ def train_KPCA(in_dir, out_dir, start_time, end_time, kernel, alpha):
     tr_path = os.path.join(in_dir,"whole.npy")
     #prendo i dati di training
     tr_data = np.load(tr_path)[:,start_time:end_time]
-    #calcolo fastica e lo salvo come oggetto
+    #calcolo l'approssimazione del kernel, poi la pca e lo salvo come oggetto
     with open(out_path, 'wb') as f:
-        ica = KernelPCA(n_components=z_dims, kernel=kernel, alpha=alpha)
-        ica.fit(tr_data)
-        pickle.dump(ica,f)
+        if kernel == 'rbf':
+            pipeline = Pipeline([('nystroem_approx', Nystroem(kernel=kernel, gamma=alpha, n_components=2000)),
+                                 ('final_pca', PCA(n_components=50))
+                                ])
+        elif kernel == 'poly':
+            pipeline = Pipeline([('nystroem_approx', Nystroem(kernel=kernel, degree=alpha, n_components=2000)),
+                                 ('final_pca', PCA(n_components=50))
+                                ])
+        elif kernel == 'sigmoid':
+            pipeline = Pipeline([('nystroem_approx', Nystroem(kernel=kernel, gamma=alpha, n_components=2000)),
+                                 ('final_pca', PCA(n_components=50))
+                                ])
+        else:
+            raise Exception('kerne non valido')
+        kica = pipeline.fit(tr_data)
+        pickle.dump(kica,f)
 
 def train_PCA(in_dir, out_dir, start_time, end_time):
     #identico a sopra ma cambia l'algoritmo che uso in PCA
@@ -239,7 +254,8 @@ class train_VAEEG():
                 torch.cuda.empty_cache()
                 current_step = current_step+1
                 #passo i dati nel modello 
-                mu, log_var, x_rec = self.model(input)
+                input = input.to(self.device)
+                mu, log_var, x_rec, _ = self.model(input)
                 #calcolo loss
                 kld = md.kl_loss(mu,log_var)
                 rec = md.recon_loss(input,x_rec)

@@ -30,7 +30,7 @@ train_PCA(in_dir=in_dir, out_dir=out_dir, start_time=start_time, end_time=end_ti
 
 print('DEBUG: inizo train k-pca')
 kernel = [ 'rbf', 'poly', 'sigmoid']
-args = [[0.01,0.1,1,5,10],[10,15,20,50,100], [0.01,0.1,1,5,10]]
+args = [[0.01,0.1,1,5,10],[10,15,20,50,100],[0.01,0.1,1,5,10]]
 for k,a in zip(kernel, args):
     print('DEBUG: training kpca con: ', k,' ', a)
     train_KPCA(in_dir=in_dir, out_dir=out_dir, start_time=start_time, end_time=end_time, kernel=k, alpha=a)

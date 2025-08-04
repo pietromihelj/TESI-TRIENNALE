@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 #SBATCH --job-name=VAEEG_training
-#SBATCH --partition=turing-long
+#SBATCH --partition=lovelace
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
@@ -9,6 +9,8 @@
 #SBATCH --time=2-00:00:00
 #SBATCH --output=slurm-%j.out
 #SBATCH --error=slurm-%j.err
+#SBATCH --gres=gpu:1
+
 source /opt/spack/opt/spack/linux-rocky9-x86_64/gcc-13.2.0/miniconda3-22.11.1-tn534fvb4uy4wrf7m2zcwpiycdzlebd6/bin/activate my_tesy_env
 cd /u/pmihelj/TESI-TRIENNALE
 python3 -u model_training.py \
@@ -26,4 +28,4 @@ python3 -u model_training.py \
 --lr 0.001 \
 --beta 0.0001 \
 --n_print 50000 \
---n_gpus=0
+--n_gpus=1

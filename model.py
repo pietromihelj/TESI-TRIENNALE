@@ -216,6 +216,7 @@ class Decoder(nn.Module):
                                       #layer per ritornare alle corretta dimensione dell'input
                                       nn.Conv1d(in_channels=1, out_channels=1, kernel_size=7, stride=1))
         self.last_lstm = last_lstm
+        self.last_conv_layer = nn.Conv1d(in_channels=1, out_channels=1, kernel_size=7, stride=1)
 
     def forward(self, x):
         x = self.conT(x)
@@ -229,7 +230,7 @@ class Decoder(nn.Module):
             x = torch.permute(x,(2,0,1))
             x = self.tail(x)
             x = torch.permute(x,(1,2,0))
-            x = nn.Conv1d(in_channels=1, out_channels=1, kernel_size=7, stride=1)(x)
+            x =  self.last_conv_layer(x)
         else:
             x = self.tail(x)
         return x
@@ -244,4 +245,4 @@ class VAEEG(nn.Module):
         mu, log_var = self.encoder(x)
         z = re_parameterize(mu, log_var)
         x_rec = self.decoder(z)
-        return mu, log_var, x_rec
+        return mu, log_var, x_rec, z
