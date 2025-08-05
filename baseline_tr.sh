@@ -13,4 +13,4 @@ cd /u/pmihelj/TESI-TRIENNALE
 python3 -u baseline_models_training.py \
 --in_dir "/u/pmihelj/datasets/Training_dataset/train" \
 --out_dir "/u/pmihelj/models" \
---clip_len 250
+--clip_len 250 

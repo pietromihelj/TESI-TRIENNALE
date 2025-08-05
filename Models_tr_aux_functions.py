@@ -17,9 +17,10 @@ z_dims = 50
 
 def train_fast_ICA(in_dir, out_dir, start_time, end_time, alghoritm, fun):
     #prendo il path dove salvero l'oggetto
-    out_path = os.path.join(out_dir,alghoritm+fun+"FastICA_whole.pkl")
-    if not os.path.isdir(out_dir):
-        raise Exception('Directory di output non esistente, creare la directory prima')
+    target_dir = os.path.join(out_dir, 'fast_ica', alghoritm)
+    if not os.path.isdir(target_dir):
+        os.makedirs(target_dir, exist_ok=True) 
+    out_path = os.path.join(target_dir,fun+'_'+"FastICA_whole.pkl")
     #prendo il path ai dati di training
     tr_path = os.path.join(in_dir,"whole.npy")
     #prendo i dati di training
@@ -30,28 +31,31 @@ def train_fast_ICA(in_dir, out_dir, start_time, end_time, alghoritm, fun):
         ica.fit(tr_data)
         pickle.dump(ica,f)
 
-def train_KPCA(in_dir, out_dir, start_time, end_time, kernel, alpha):
+def train_KPCA(in_dir, out_dir, start_time, end_time, kernel, alpha, n_comp):
     #prendo il path dove salvero l'oggetto
-    out_path = os.path.join(out_dir,kernel+str(alpha)+"KernelPCA_whole.pkl")
-    if not os.path.isdir(out_dir):
-        raise Exception('Directory di output non esistente, creare la directory prima')
-    #prendo il path ai dati di training
+    #creo il path alla directory di output
+    target_dir = os.path.join(out_dir, 'k_pca',kernel, str(alpha))
+    #se non esiste la creo
+    if not os.path.isdir(target_dir):
+        os.makedirs(target_dir, exist_ok=True) 
+    #creo l'output al file
+    out_path = os.path.join(target_dir, str(n_comp) + '_' + "KernelPCA_whole.pkl")
     tr_path = os.path.join(in_dir,"whole.npy")
     #prendo i dati di training
     tr_data = np.load(tr_path)[:,start_time:end_time]
     #calcolo l'approssimazione del kernel, poi la pca e lo salvo come oggetto
     with open(out_path, 'wb') as f:
         if kernel == 'rbf':
-            pipeline = Pipeline([('nystroem_approx', Nystroem(kernel=kernel, gamma=alpha, n_components=2000)),
-                                 ('final_pca', PCA(n_components=50))
+            pipeline = Pipeline([('nystroem_approx', Nystroem(kernel=kernel, gamma=alpha, n_components=n_comp)),
+                                 ('final_pca', PCA(n_components=z_dims))
                                 ])
         elif kernel == 'poly':
-            pipeline = Pipeline([('nystroem_approx', Nystroem(kernel=kernel, degree=alpha, n_components=2000)),
-                                 ('final_pca', PCA(n_components=50))
+            pipeline = Pipeline([('nystroem_approx', Nystroem(kernel=kernel, degree=alpha, n_components=n_comp)),
+                                 ('final_pca', PCA(n_components=z_dims))
                                 ])
         elif kernel == 'sigmoid':
-            pipeline = Pipeline([('nystroem_approx', Nystroem(kernel=kernel, gamma=alpha, n_components=2000)),
-                                 ('final_pca', PCA(n_components=50))
+            pipeline = Pipeline([('nystroem_approx', Nystroem(kernel=kernel, gamma=alpha, n_components=n_comp)),
+                                 ('final_pca', PCA(n_components=z_dims))
                                 ])
         else:
             raise Exception('kerne non valido')
