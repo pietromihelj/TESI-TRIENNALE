@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64GB
 #SBATCH --time=2-00:00:00
-#SBATCH --output=slurm-%j.out
-#SBATCH --error=slurm-%j.err
+#SBATCH --output=slurms/VAEEG/terzo_training/slurm-%j.out
+#SBATCH --error=slurms/VAEEG/terzo_training/slurm-%j.err
 #SBATCH --gres=gpu:1
 
 source /opt/spack/opt/spack/linux-rocky9-x86_64/gcc-13.2.0/miniconda3-22.11.1-tn534fvb4uy4wrf7m2zcwpiycdzlebd6/bin/activate my_tesy_env

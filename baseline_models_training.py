@@ -21,9 +21,10 @@ end_time = 250
 print('DEBUG: inizio training fast-ica')
 alg = ['parallel', 'deflation']
 fun = ['logcosh', 'exp', 'cube']
-for a,f in zip(alg,fun):
-    print('DEBUG: training fastica con: ', a, ' ', f)
-    train_fast_ICA(in_dir=in_dir, out_dir=out_dir, start_time=start_time, end_time=end_time, alghoritm=a, fun=f)
+for a in alg:
+    for f in fun:
+        print('DEBUG: training fastica con: ', a, ' ', f)
+        train_fast_ICA(in_dir=in_dir, out_dir=out_dir, start_time=start_time, end_time=end_time, alghoritm=a, fun=f)
 
 print('DEBUG: inizio train pca')
 train_PCA(in_dir=in_dir, out_dir=out_dir, start_time=start_time, end_time=end_time)
@@ -33,7 +34,7 @@ kernel = [ 'rbf', 'poly', 'sigmoid']
 args = [[0.01,0.1,1,5,10],[10,15,20,50,100],[0.01,0.1,1,5,10]]
 for k,a in zip(kernel, args):
     for arg in a:
-        for i in range(10000, 1000000, 1000):
+        for i in range(13000, 13500, 100):
         
             print('DEBUG: training kpca con: ', k,' ', arg,' ',i)
             train_KPCA(in_dir=in_dir, out_dir=out_dir, start_time=start_time, end_time=end_time, kernel=k, alpha=arg, n_comp=i)
