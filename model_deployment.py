@@ -1,16 +1,51 @@
-from utils import get_raw, find_artefacts_2d, merge_continuous_artifacts
-import gc
+import torch
 import numpy as np
+import pickle
+from model import VAEEG
 import mne
+import gc
+import portion as P
+from utils import find_artefacts_2d, merge_continuous_artifacts
 import pandas as pd
 import random
-import os
-import portion as P
-class data_gen():
+from sklearn.decomposition import  PCA, FastICA, KernelPCA
+
+def pearson_index(x, y, dim=-1):
+        #calcolo manuale del coeff di correlazione di pearson lungo una specifica dimensione
+        xy = x * y
+        xx = x * x
+        yy = y * y
+
+        mx = x.mean(dim)
+        my = y.mean(dim)
+        mxy = xy.mean(dim)
+        mxx = xx.mean(dim)
+        myy = yy.mean(dim)
+
+        varx = mxx - mx ** 2
+        vary = myy - my ** 2
+
+        if vary==0:
+            print('vary = 0')
+            return np.inf
+
+        r = (mxy - mx * my) / torch.sqrt(varx*vary)
+        return r
+
+def NRMSE(x,y):
+    squared_error = (x - y) ** 2
+    mse = np.mean(squared_error)
+    rmse = np.sqrt(mse)
+    mean_x = np.mean(x)
+    if mean_x == 0:
+        return np.inf
+    nrmse = rmse / mean_x
+    return nrmse
+
+class preprocess():
+
     _SFREQ = 250.0
-
     max_clips = 500
-
     _BANDS = {"whole": (1.0, 30.0),
               "delta": (1.0, 4.0),
               "theta": (4.0, 8.0),
@@ -18,11 +53,8 @@ class data_gen():
               "low_beta": (13, 20),
               "high_beta": (20, 30.0)}
     
-    def __init__(self, f_name, d_out, out_prefix):
-        self.f_name = f_name
-        self.d_out = d_out
-        self.out_prefix = out_prefix
-        self.data, self.ch_names = self.get_filtered_data(verbose = False)
+    def __init__(self,raw):
+        self.data, self.cha_names = self.get_filtered_data(raw=raw, verbose=False)
     
     @staticmethod
     def check_channel_names(raw_obj, verbose):
@@ -64,11 +96,8 @@ class data_gen():
             raw_obj.pick(ch_necessary)
         else:
             raise RuntimeError("Channel Error")
-        
-    def get_filtered_data(self, verbose):
 
-        #prendo l'oggetto raw contenente l'eeg
-        raw = get_raw(self.f_name, verbose)
+    def get_filtered_data(self, raw, verbose):
         #controllo la presenza dei canali
         self.check_channel_names(raw,verbose)
         #carico direttamente i dati grezzi per modifica in place
@@ -92,16 +121,13 @@ class data_gen():
         del raw, data
         gc.collect()
         return filter_results, ch_names
-    
+
     @staticmethod
     def filter_intervalset(input_intervalset, threshold):
         return [i for i in input_intervalset if i.upper - i.lower > threshold]
 
-    def save_final_data(self, seg_len = 5.0, amp_th = 400, merge_len = 1.0, drop = 60.0):
-        #carico il segnale completo
+    def get_final_data(self, seg_len = 5.0, amp_th = 400, merge_len = 1.0, drop = 60.0):
         data = self.data['whole']
-        
-        #setto le treashold necessarie
         m_th = int(merge_len*self._SFREQ)
         s_th = int(seg_len*self._SFREQ)
         start = int(drop*self._SFREQ)
@@ -119,9 +145,7 @@ class data_gen():
         c_clean = [whole_r - s for s in merged_art]
         #tengo solo i campioni più lunghi di threashold
         keep_clean = [self.filter_intervalset(s, s_th) for s in c_clean]
-
         out = []
-
         #per ogni canale e set di intervalli associati
         for idx, item_set in enumerate(keep_clean, 0):
             #per ogni intervallo
@@ -156,5 +180,52 @@ class data_gen():
                 outputs.append(tmp)
             
             outputs = np.stack(outputs, axis=0)
-            out_file = os.path.join(self.d_out, "%s.npy" % self.out_prefix)
-            np.save(out_file, outputs)
+        return outputs
+
+class GetLatentVAEEG():
+    
+    def __init__(self, am_path, tm_path, dm_path, lbm_path, hbm_path, z_dims, slopes, lstms):
+        am = torch.load(am_path)
+        tm = torch.load(tm_path)
+        dm = torch.load(dm_path)
+        lbm = torch.load(lbm_path)
+        hbm = torch.load(hbm_path)
+        self.models = [VAEEG(1, *params)  for _,params in enumerate(zip(z_dims,slopes,lstms))]
+        for model, saves in zip(self.models,[am,tm,dm,lbm,hbm]):
+            model.load_state_dict(saves['model'])
+
+
+    def run(self,raw):
+        prep = preprocess(raw)
+        inputs = prep.get_final_data(raw)
+        if not torch.is_tensor(inputs):
+            raise Exception('I dati devono essere un tensore torch ma sono: ', type(inputs))
+        x_recs = []
+        zs = []
+        for i in inputs:
+            res = [model(i) for model in self.models]
+            x_rec = [x_r for _,_,x_r,_ in res]
+            z = [z_ for _,_,_,z_ in res]
+
+            x_recs.append(x_rec)
+            zs.append(z)
+        return x_recs, zs
+
+
+class GetLatentBaseline():
+    def __init__(self, file_name):
+        with open(file_name, 'rb') as f:
+            self.model = pickle.load(f)
+    
+    def run(self, inputs):
+        if not isinstance(inputs, np.ndarray):
+             raise Exception('I dati devono essere un array numpy ma sono: ', type(inputs))
+        
+        zs = self.model.transform(inputs)
+        x_recon = self.model.inverse_transform(zs)
+
+        return zs, x_recon
+    
+        
+    
+    
