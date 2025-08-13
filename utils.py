@@ -203,3 +203,13 @@ def type_assert(*type_args, **type_kwargs):
         return wrapper
 
     return decorator
+
+def stride_data(x, n_per_seg, n_overlap):
+    if n_per_seg == 1 and n_overlap == 0:
+        result = x[..., np.newaxis]
+    else:
+        step = n_per_seg - n_overlap
+        shape = x.shape[:-1]+((x.shape[-1]-n_overlap)//step, n_per_seg)
+        strides = x.strides[:-1]+(step*x.strides[-1], x.strides[-1])
+        result = np.lib.stride_tricks.as_strided(x, shape=shape, strides=strides)
+    return result
