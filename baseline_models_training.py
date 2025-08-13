@@ -1,6 +1,5 @@
 from Models_tr_aux_functions import train_fast_ICA, train_KPCA, train_PCA
 import argparse
-import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--in_dir', type=str, required=True, help='in_dir')
