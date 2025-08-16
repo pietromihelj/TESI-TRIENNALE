@@ -1,14 +1,11 @@
 import torch
-import numpy as np
-import pickle
 from model import VAEEG
-from sklearn.decomposition import  PCA, FastICA, KernelPCA
-import pywt 
-import pandas as pd
-from scipy.fftpack import next_fast_len
-from scipy.signal import hilbert
-from utils import stride_data
+import numpy as np
 import mne
+from utils import stride_data
+import pickle
+import pandas as pd
+import pywt
 
 STANDARD_1020 =  ['FP1', 'FP2', 'FZ', 'F3', 'F4', 'F7', 'F8', 'CZ', 'C3', 'C4', 'PZ', 'P3', 'P4', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
 
@@ -32,7 +29,7 @@ def pearson_index(x, y, dim=-1):
             return np.inf
 
         r = (mxy - mx * my) / torch.sqrt(varx*vary)
-        return r #numero float
+        return r 
 
 def NRMSE(x,y):
     #calcolo manuale dell'nmsre
@@ -43,7 +40,7 @@ def NRMSE(x,y):
     if mean_x == 0:
         return np.inf
     nrmse = rmse / mean_x
-    return nrmse #numero float
+    return nrmse
 
 
 class DeployVAEEG():
@@ -143,7 +140,6 @@ class DeployBaseline():
         clips = stride_data(signal, 250,0)
         return clips
 
-
     def run(self, inputs):
         """
         INPUT: lista di clip monocanele [N,250] 
@@ -154,6 +150,13 @@ class DeployBaseline():
         #prendo le ricostruzioni per ogni clip
         rec = self.model.inverse_transform(z)
         return rec, z
+
+def get_rec_latent():
+    """
+    INPUT: lista di segnali raw EEG
+    OUTPUT: Lista di ricostruzioni, lista di latenti
+    """
+    pass
 
 class PhaseComparison():
     def __init__(self):
@@ -187,7 +190,7 @@ class PhaseComparison():
     
     def work(self, orig, rec):
         """
-        INPUT: liste di dati originali e ricostruiti di forma [N, ch_num, temp_len]
+        INPUT: lista di segnali raw
         OUTPUT: Dizionario contenente l'errore medio di fase per banda
         """
         res = []
@@ -207,95 +210,49 @@ class PhaseComparison():
 
 
 class ConComparison():
-    def __init__(self, model, save_files, params):
-        self.model = self.load_model(model, save_files, params)
-    
-    def load_model(self, mode, save_files, params=None):
-        #carico il giusto modello
-        if mode == 'VAE':
-            model = GetLatentVAEEG(*save_files, *params)
-        
-        if mode in ['PCA','KernelPCA', 'FastICA']:
-            with open(save_files,'rb') as f:
-                model = GetLatentBaseline(save_files)
-    
-    def complex_data(self, data):
-        if not isinstance(data, np.ndarray) or not data.ndim >= 1:
-            raise TypeError("data must be a numpy.ndarray with dimension >=1 !")
-        
-        #
-        n_times = data.shape[-1]
-        if data.dtype in (np.float32, np.float64):
-            n_fft = next_fast_len(n_times)
-            analityc_data = hilbert(data, N=n_fft, axis=-1)[..., :n_times]
+    def __init__(self, model, save_files, params=None):
+        """
+        INPUT: Tipo di modello, file dove è salvato e parametri
+        Carica la classe di deploy del modello da usare
+        """
+        if model == 'VAEEG':
+            self.model = DeployVAEEG(*save_files, *params)
+        elif model in ['PCA','KernelPCA','FastICA']:
+            model=DeployBaseline(save_files)
         else:
-            raise ValueError('data.dtype must be float or complex, got %s'
-                         % (data.dtype,))
-        return analityc_data
+            raise Exception('Il modello specificato non è supportato')
 
-    def plv_con(self, data_a, data_b):
-        assert data_a.dtype in (np.complex64, np.complex128) and data_b.dtype in (np.complex64, np.complex128),  'data type must be complex , got %s %s'%(data_a.dtype, data_b.dtype)
-        data_a = np.arctan(data_a.imag / data_a.real)
-        data_b = np.arctan(data_b.imag / data_b.real)
-        t = np.exp(np.complex(0,1)*(data_a-data_b))
-        t_len = t.shape[-1]
-        t = np.abs(np.sum(t,axis=-1))/t_len
-        return t
-    
-    def pcc_con(self, data, channels_dim):
-        target_trans = tuple(list(range(0,channels_dim, 1)) + list(range(channels_dim+1, data.ndim-1,1)) + [channels_dim] + [data.ndim-1])
-        data = np.transpose(data, target_trans)
+    def pcc_con(self, orig_ch, rec_ch):
+        """
+        INPUT: 2 segnali monocanale, originale e ricostruito
+        OUTPUT: valore del coefficiente di pearson tra i 2 canali
+        """
+        pass
 
-        data = data - data.mean(axis=-1, keepdims=True)
-        div_on = np.matmul(data, np.transpose(data, tuple([i for i in range(data.ndim-2)]+ [-1] + [-2])))
-        tmp = (data**2).sum(axis=-1, keepdims=True)
-        div_down = np.sqrt(np.matmul(tmp, np.transpose(tmp, tuple([i for i in range(tmp.ndim-2)] + [-1] + [-2]))))
-        return div_on/div_down
+    def pvl_con(self, orig_ch, rec_ch):
+        """
+        INPUT: 2 segnali monocanale, originale e ricostruito
+        OUTPUT: phase lock value tra i 2 canali
+        """
+        pass
 
+    def get_con(self, orig, rec):
+        """
+        INPUT: 2 segnali interi contenenti 19 canali e tutte e 5 le bande
 
-    def get_connectivity(self, data, start=None, stop=None, stride=5):
-        assert data.shape[0] == len(STANDARD_1020), "input data shape first dim must equal to channels setting."
-        data = self.complex_data()
-        row_index, col_index = np.triu_indices(19,1)
-        paris_len = len(row_index)
-        data = stride_data(data, int(250*stride),0) if stride else data
-        
-        if start:
-            data = data[:, int(start*250):int(stop*250)]
-        
-        plv_res = []
-        for i in range(paris_len):
-            plv = self.plv_con(data[row_index[i],...], data[col_index[i], ...])
-            plv_res.append(plv)
-        plv_res = np.stack(plv_res, axis=-1)
+        La funzione si occupa di iterare su tutte le coppie di canali e chiamare le funzioni di 
+        calcolo della connettività
 
-        data[:,2:,...] = np.abs(data[:,2:,...])
-        pcc_res = self.pcc_con(data.real, channel_dim=0)
-        assert pcc_res.shape == plv_res.shape, "plv result shape not equal to pcc result shape."
-        return pcc_res, plv_res
+        OUTPUT: 2 liste contenenti i valori delle connettività tra i 2 segnali per ogni coppia di canali
+        """
+        pass
 
-    def work(self, save_path, orig):
-        #orig.shape = [19, 250]
-        orig_pcc, orig_pvl = self.get_connectivity(orig, stride=5)
+    def work():
+        """
+        INPUT: Batch di segnali raw
 
-        if self.model == 'VAE':
-            orig = self.model.preprocess(orig*1e-6, 250)
-            #orig.shape = [batch,5,250]
-            orig = stride_data(orig, 250, 0)
-            orig_len = orig.shape[-2]
+        deve essere eseguito il preprocessing per ogni segnale, poi ottenuta la ricostruzione del segnale
+        ed infine passato ogni segnale alla funzione di calcolo della connettivita
 
-            if orig_len>300:
-                chunks_ids = np.arange(300, orig_len+1-300,300)
-                orig = np.split(orig, chunks_ids, axis=-1)
-                recs = []
-
-                for o in orig:
-                    if o.shape[1] == 0:
-                        continue
-                    
-                    rec,_ = self.model.run(o.reshape(-1,250))
-                    rec.reshape(19,-1,250)
-                    recs.append(rec)
-
-
-        
+        OUTPUT: Dataframe contenente le 2 liste con il valore delle connettività per ogni segnale
+        """
