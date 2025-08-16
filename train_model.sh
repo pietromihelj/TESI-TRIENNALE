@@ -19,13 +19,13 @@ python3 -u model_training.py \
 --z_dim 10 \
 --negative_slope 0.2 \
 --decoder_last_lstm \
---ckpt_file "/u/pmihelj/models/VAEEG_high_beta_z10/ckpt_epoch_744_33300000.ckpt" \
+--ckpt_file "/u/pmihelj/models/VAEEG_theta_z10/ckpt_epoch_742_35700000.ckpt" \
 --data_dir "/u/pmihelj/datasets/Training_dataset/train" \
---band_name "high_beta" \
+--band_name "theta" \
 --clip_len 250 \
 --batch_size 48 \
 --n_epochs 200 \
---lr 0.0001 \
+--lr 0.001 \
 --beta 0.01 \
---n_print 100000 \
+--n_print 300000 \
 --n_gpus=1

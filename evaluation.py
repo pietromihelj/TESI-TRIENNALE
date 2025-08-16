@@ -1,14 +1,14 @@
 import torch
-import numpy as np
-import pickle
 from model import VAEEG
-from sklearn.decomposition import  PCA, FastICA, KernelPCA
-import pywt 
+import numpy as np
+import mne
+from utils import stride_data
+import pickle
 import pandas as pd
+import pywt
 from scipy.fftpack import next_fast_len
 from scipy.signal import hilbert
-from utils import stride_data
-import mne
+from sklearn.decomposition import PCA, FastICA
 
 STANDARD_1020 =  ['FP1', 'FP2', 'FZ', 'F3', 'F4', 'F7', 'F8', 'CZ', 'C3', 'C4', 'PZ', 'P3', 'P4', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
 
@@ -32,7 +32,7 @@ def pearson_index(x, y, dim=-1):
             return np.inf
 
         r = (mxy - mx * my) / torch.sqrt(varx*vary)
-        return r #numero float
+        return r 
 
 def NRMSE(x,y):
     #calcolo manuale dell'nmsre
@@ -43,7 +43,7 @@ def NRMSE(x,y):
     if mean_x == 0:
         return np.inf
     nrmse = rmse / mean_x
-    return nrmse #numero float
+    return nrmse
 
 
 class DeployVAEEG():
@@ -69,9 +69,8 @@ class DeployVAEEG():
 
     def preprocess(self, signal, fs=250):
         """
-        ipotesi: segnale raw
-        INPUT: segnale monocanale di eeg come numpy [n_channels, temp_len]
-        OUTPUT: array numpy della forma=[ch_num, clip_num, bands_num, clip_len]
+        INPUT: segnale come EEG raw [n_channels, temp_len]
+        OUTPUT: torch tensor della forma=[ch_num, clip_num, bands_num, clip_len]
         """
         #inizializzo scala e bande
         scale = 1.0e6
@@ -96,13 +95,14 @@ class DeployVAEEG():
             clips = stride_data(band, 250, 0)
             out.append(clips)
         #ritorno gli array delle bande uniti e riordino per avere [ch_num, clip_num, band_num, clip_len]
-        return np.transpose(np.stack(out, axis=0), (1,2,0,3))
+        return torch.from_numpy(np.transpose(np.stack(out, axis=0), (1,2,0,3))).float()
 
     def run(self, inputs):
         """
         INPUT: Un segnale EEG monocanale. in_dim = [clip_num, 5, clip_len]
-        OUTPUT: Il segnale EEG ricostruito [clip_num, clip_len] e le variabili latenti estratte [clip_num, 50]        
+        OUTPUT: torch tensor segnale EEG ricostruito [temp_len] e le variabili latenti estratte [clip_num, 50]        
         """
+        assert isinstance(inputs,torch.tensor), 'il segnale deve essere un aìtensore torch'
         #per ogni banda passo le clip al modello ed estraggo le ricostruzioni e le variabili latenti
         rec_signal = []
         latent_signal = []
@@ -111,9 +111,9 @@ class DeployVAEEG():
             rec, z = self.models[i](inputs[:,i,:])
             rec_signal.append(rec)
             latent_signal.append(z)
-        return torch.stack(rec_signal, dim = 1).sum(axis=1), torch.cat(latent_signal, dim=1)
+        return torch.stack(rec_signal, dim = 1).sum(dim=1).flatten(), torch.cat(latent_signal, dim=1)
         
-        
+
 
 class DeployBaseline():
     def __init__(self, path):
@@ -128,7 +128,7 @@ class DeployBaseline():
     def preprocess(self, signal, fs=250):
         """
         INPUT: segnale EEG raw [ch_num, temp_len]
-        OUTPUT: segnale segmentato in clip da 1 secondo [ch_num, clip_num, clip_len]
+        OUTPUT: numpy array segnale segmentato in clip da 1 secondo [ch_num, clip_num, clip_len]
         """
         #estraggo i dati e li scalo
         scale = 1.0e6
@@ -143,17 +143,68 @@ class DeployBaseline():
         clips = stride_data(signal, 250,0)
         return clips
 
-
     def run(self, inputs):
         """
-        INPUT: lista di clip monocanele [N,250] 
-        OUTPUT: Il segnale ricostruito e le variabili latenti estratte 
+        INPUT: segnale EEG monocanale [clip_num, clip_len] 
+        OUTPUT: numpy array segnale ricostruito [temp_len] e le variabili latenti estratte [clip_num,50]
         """
         #ricavo le latenti per ogni clip
         z = self.model.transform(inputs)
         #prendo le ricostruzioni per ogni clip
         rec = self.model.inverse_transform(z)
-        return rec, z
+        return rec.flatten(), z
+
+def get_orig_rec_latent(raws, model):
+    """
+    INPUT: lista di segnali raw EEG
+    OUTPUT: numpy array di originali = [N, ch_num, temp_len], ricostruzioni = [N, ch_num, temp_len], latenti dim [N, ch_num, clip_num, 50]
+    """
+    assert isinstance(raws, list), 'input deve essere una lista'
+    if isinstance(model, DeployVAEEG):
+        origs = []
+        #origin diventa una lista di tensori di forma [ch_num, clip_num, bands_num, clip_len]
+        for raw in raws:
+            origs.append(model.preprocess(raw))
+        
+        rec = []
+        latent = []
+        for ori in origs:
+            ch_rec = []
+            ch_latent = []
+            #ogni canale ha forma [clip_num, bands_num, clip_len]
+            for ch in ori:
+                c_r, c_l = model.run(ch)
+                ch_rec.append(c_r.detach().cpu().numpy())
+                ch_latent.append(c_l.detach().cpu().numpy())
+            rec.append(np.stack(ch_rec))
+            latent.append(np.stack(ch_latent))
+        
+        for o in origs:
+            o.sum(dim=2)
+            o.reshape((o.shape[0], -1)).detach().cpu().numpy()
+
+        return np.stack(origs), rec, latent 
+    #[ch_num, clip_num, bands_num, clip_len]
+    if isinstance(model, (PCA, FastICA)):
+        origis = []
+        for raw in raws:
+            origis.append(model.preprocess())
+        
+        rec = []
+        latent = []
+        for ori in origis:
+            ch_rec = []
+            ch_latent = []
+            for ch in ori:
+                c_r, c_l = model.run(ch)
+                ch_rec.append(c_r)
+                ch_latent.append(c_l)
+            rec.append(np.stack(ch_rec))
+            latent.append(np.stack(ch_latent))
+        return np.stack(origis, axis=0).reshape(origis.shape[0], origis.shape[1], -1), np.array(rec), np.array(latent)
+
+
+    
 
 class PhaseComparison():
     def __init__(self):
@@ -165,9 +216,10 @@ class PhaseComparison():
     
     def compare_mo_wa_ps(self, orig, rec, l_freq=1, h_freq=30, fs=250):
         """
-        INPUT: segnale e la sua ricostruzione monocanale [temp_len,]
-        OUTPUT: dataframe pandas con l'errore medio per banda della differenza di fase
+        INPUT: segnale e la sua ricostruzione monocanale [temp_len], come array numpy
+        OUTPUT: dizionario con l'errore medio per banda della differenza di fase
         """
+        assert isinstance(orig, np.array) and isinstance(rec, np.array), 'input deve essere numpy array'
         #creo la lista delle scale per trovare le frequenze
         scales = np.arange(fs/2/h_freq, fs/2/l_freq, 1)
         #calcolo le trasformate wavelet morlet
@@ -185,46 +237,51 @@ class PhaseComparison():
             res[k] = [np.abs((orig_phase[pick_index])-rec_phase[pick_index])]
         return res
     
-    def work(self, orig, rec):
+    def work(self, raws, model):
         """
-        INPUT: liste di dati originali e ricostruiti di forma [N, ch_num, temp_len]
-        OUTPUT: Dizionario contenente l'errore medio di fase per banda
+        INPUT: lista di segnali raw
+        OUTPUT: Dataframe contenente l'errore medio di fase per banda
         """
+        orig, rec, _ = get_orig_rec_latent(raws, model) 
         res = []
         #per ogni coppia di valori calcolo la media per canale
         for o,r in zip(orig, rec):
             ch_res = []
             for ch_o, ch_r in zip(o,r):
                 #calcolo l'errore di phase medio per banda
-                temp_res = self.compare_mo_wa_ps(ch_o,ch_r)
+                temp_res = self.compare_mo_wa_ps(ch_o.reshape(-1),ch_r.reshape(-1))
                 ch_res.append(list(temp_res.values()))
             #calcolo poi l'errore medio tra i canali per banda
             ch_res = np.stack(ch_res, axis=1)
             ch_res = np.mean(ch_res,axis=1)
         res.append(ch_res)
         #calcolo poi la media tra le coppie per banda
-        return dict(zip(list(self.BANDS.keys()),np.mean(np.stack(res, axis=1), axis=1).tolist()))
+        return pd.DataFrame(dict(zip(list(self.BANDS.keys()),np.mean(np.stack(res, axis=1), axis=1).tolist())))
 
 
 class ConComparison():
-    def __init__(self, model, save_files, params):
-        self.model = self.load_model(model, save_files, params)
-    
-    def load_model(self, mode, save_files, params=None):
-        #carico il giusto modello
-        if mode == 'VAE':
-            model = GetLatentVAEEG(*save_files, *params)
+    def __init__(self, model, save_files, params=None):
+        """
+        INPUT: Tipo di modello, file dove è salvato e parametri
+        Carica la classe di deploy del modello da usare
+        """
+        if model == 'VAEEG':
+            self.model = DeployVAEEG(*save_files, *params)
+        elif model in ['PCA','KernelPCA','FastICA']:
+            model=DeployBaseline(save_files)
+        else:
+            raise Exception('Il modello specificato non è supportato')
         
-        if mode in ['PCA','KernelPCA', 'FastICA']:
-            with open(save_files,'rb') as f:
-                model = GetLatentBaseline(save_files)
-    
     def complex_data(self, data):
+        """
+        INPUT: Segnale EEG [ch_num, temp_len]
+        OUTPUT: Segnale EEG complesso
+        """
         if not isinstance(data, np.ndarray) or not data.ndim >= 1:
             raise TypeError("data must be a numpy.ndarray with dimension >=1 !")
-        
-        #
+        #prendo la dimensione temporale
         n_times = data.shape[-1]
+        #calcolo la trasformata di hilbert
         if data.dtype in (np.float32, np.float64):
             n_fft = next_fast_len(n_times)
             analityc_data = hilbert(data, N=n_fft, axis=-1)[..., :n_times]
@@ -233,69 +290,91 @@ class ConComparison():
                          % (data.dtype,))
         return analityc_data
 
-    def plv_con(self, data_a, data_b):
-        assert data_a.dtype in (np.complex64, np.complex128) and data_b.dtype in (np.complex64, np.complex128),  'data type must be complex , got %s %s'%(data_a.dtype, data_b.dtype)
-        data_a = np.arctan(data_a.imag / data_a.real)
-        data_b = np.arctan(data_b.imag / data_b.real)
-        t = np.exp(np.complex(0,1)*(data_a-data_b))
-        t_len = t.shape[-1]
-        t = np.abs(np.sum(t,axis=-1))/t_len
-        return t
-    
-    def pcc_con(self, data, channels_dim):
-        target_trans = tuple(list(range(0,channels_dim, 1)) + list(range(channels_dim+1, data.ndim-1,1)) + [channels_dim] + [data.ndim-1])
-        data = np.transpose(data, target_trans)
-
+    def pcc_con(self, data):
+        """
+        INPUT: segnale multicanale [ch_num, temp_len]
+        OUTPUT: matrice di correlazione tra i canali
+        """
+        assert isinstance(data, np.array), 'input deve essere numpy array'
+        #calcolo la matrice di correlazione
         data = data - data.mean(axis=-1, keepdims=True)
-        div_on = np.matmul(data, np.transpose(data, tuple([i for i in range(data.ndim-2)]+ [-1] + [-2])))
+        div_on = np.matmul(data, data.T)
+        #normalizzo
         tmp = (data**2).sum(axis=-1, keepdims=True)
-        div_down = np.sqrt(np.matmul(tmp, np.transpose(tmp, tuple([i for i in range(tmp.ndim-2)] + [-1] + [-2]))))
+        div_down = np.sqrt(np.matmul(tmp,tmp.T))
         return div_on/div_down
 
+    def pvl_con(self, data_a, data_b):
+        """
+        INPUT: 2 segnali monocanale complessi [temp_len]
+        OUTPUT: phase lock value tra i 2 canali
+        """
+        assert data_a.dtype in (np.complex64, np.complex128) and data_b.dtype in (np.complex64, np.complex128),  'data type must be complex , got %s %s'%(data_a.dtype, data_b.dtype)
+        #calcolo la fase
+        data_a = np.arctan(data_a.imag / data_a.real)
+        data_b = np.arctan(data_b.imag / data_b.real)
+        #calcolo la differenza di fase per campione
+        t = np.exp(np.complex(0,1)*(data_a-data_b))
+        #calcolo il pvl 
+        t_len = t.shape[-1]
+        t = np.abs(np.sum(t,axis=-1))/t_len
+        return t        
 
-    def get_connectivity(self, data, start=None, stop=None, stride=5):
-        assert data.shape[0] == len(STANDARD_1020), "input data shape first dim must equal to channels setting."
-        data = self.complex_data()
-        row_index, col_index = np.triu_indices(19,1)
-        paris_len = len(row_index)
-        data = stride_data(data, int(250*stride),0) if stride else data
+    def get_con(self, orig, rec):
+        """
+        INPUT: 2 segnali interi contenenti 19 canali
+        OUTPUT: le 4 matrici di connettività per
+        """
+        assert orig.shape[0] == len(STANDARD_1020) and rec.shape[0] == len(STANDARD_1020), 'i segnali devono avere i 19 canali dello standard 10-20'
+        ch_num = orig.shape[0]
+        #calcolo le matrici di pcc
+        orig_pcc = self.pcc_con(orig)
+        rec_pcc = self.pcc_con(rec)
+
+        #inizializzo le matrici di pvl
+        orig_pvl = np.zeros((ch_num,ch_num))
+        rec_pvl = np.zeros((ch_num,ch_num))
+
+        #per ogni coppia di canali calcolo il pvl e poi lo specchio nella matrice
+        for i in range(ch_num):
+            for j in range(i+1, ):
+                orig_pvl[i, j] = self.pvl_con(orig[i], orig[j])
+                orig_pvl[j, i] = orig_pvl[i, j]  
+                rec_pvl[i,j] = self.pvl_con(rec[i], rec[j])
+                rec_pvl[j,i] = rec_pvl[i,j]
+        return orig_pcc, orig_pvl, rec_pcc, rec_pvl
+    
+    def work(self, raws, model):
+        """
+        INPUT: Batch di segnali raw
+        OUTPUT: Matrici medie della connettività tra i segnali
+        """
+        #calcolo origin e rec
+        orig, rec, _ = get_orig_rec_latent(raws, model)
+
+        orig_pvl = []
+        orig_pcc = []
+        rec_pvl = []
+        rec_pcc = []
+        for o, r in zip (orig, rec):
+            o_pcc, o_pvl, r_pcc, r_pvl = self.get_con(o,r)
+            orig_pcc.append(o_pcc)
+            orig_pvl.append(o_pvl)
+            rec_pcc.append(r_pcc)
+            rec_pvl.append(r_pvl)
+        orig_pcc = np.mean(np.stack(orig_pcc, axis=0), axis=0)
+        orig_pvl = np.mean(np.stack(orig_pvl, axis=0), axis=0)
+        rec_pcc = np.mean(np.stack(rec_pcc, axis=0), axis=0)
+        rec_pvl = np.mean(np.stack(rec_pvl, axis=0), axis=0)
         
-        if start:
-            data = data[:, int(start*250):int(stop*250)]
-        
-        plv_res = []
-        for i in range(paris_len):
-            plv = self.plv_con(data[row_index[i],...], data[col_index[i], ...])
-            plv_res.append(plv)
-        plv_res = np.stack(plv_res, axis=-1)
-
-        data[:,2:,...] = np.abs(data[:,2:,...])
-        pcc_res = self.pcc_con(data.real, channel_dim=0)
-        assert pcc_res.shape == plv_res.shape, "plv result shape not equal to pcc result shape."
-        return pcc_res, plv_res
-
-    def work(self, save_path, orig):
-        #orig.shape = [19, 250]
-        orig_pcc, orig_pvl = self.get_connectivity(orig, stride=5)
-
-        if self.model == 'VAE':
-            orig = self.model.preprocess(orig*1e-6, 250)
-            #orig.shape = [batch,5,250]
-            orig = stride_data(orig, 250, 0)
-            orig_len = orig.shape[-2]
-
-            if orig_len>300:
-                chunks_ids = np.arange(300, orig_len+1-300,300)
-                orig = np.split(orig, chunks_ids, axis=-1)
-                recs = []
-
-                for o in orig:
-                    if o.shape[1] == 0:
-                        continue
-                    
-                    rec,_ = self.model.run(o.reshape(-1,250))
-                    rec.reshape(19,-1,250)
-                    recs.append(rec)
+        return orig_pcc, orig_pvl, rec_pcc, rec_pvl
 
 
-        
+def evaluate(data_dir, model_files, out_dir):
+    """
+    INPUT: dove trovare i dati e dove trovare i modelli
+    OUTPUT: Il CCP medio orig/rec, l'NMRSE medio orig/rec, il dataframe delle differenze di fase, le matrici di connettività.
+    """
+
+    
+
