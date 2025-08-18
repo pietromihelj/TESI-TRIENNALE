@@ -9,6 +9,8 @@ import pywt
 from scipy.fftpack import next_fast_len
 from scipy.signal import hilbert
 from sklearn.decomposition import PCA, FastICA
+import utils
+import matplotlib.pyplot as plt
 
 STANDARD_1020 =  ['FP1', 'FP2', 'FZ', 'F3', 'F4', 'F7', 'F8', 'CZ', 'C3', 'C4', 'PZ', 'P3', 'P4', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
 
@@ -79,9 +81,7 @@ class DeployVAEEG():
                   ("alpha", (8.0, 13.0)),
                   ("low_beta", (13, 20)),
                   ("high_beta", (20, 30.0))]
-        #estraggo i soli dati come array numpy
-        signal = signal.get_data()
-        signal = np.array(signal, np.float64)
+
         signal = signal * scale
         #sistemo la frequenza di samplinf
         if fs != 250:
@@ -100,7 +100,7 @@ class DeployVAEEG():
     def run(self, inputs):
         """
         INPUT: Un segnale EEG monocanale. in_dim = [clip_num, 5, clip_len]
-        OUTPUT: torch tensor segnale EEG ricostruito [temp_len] e le variabili latenti estratte [clip_num, 50]        
+        OUTPUT: torch tensor segnale EEG ricostruito [band_num, temp_len] e le variabili latenti estratte [clip_num, 50]        
         """
         assert isinstance(inputs,torch.tensor), 'il segnale deve essere un aìtensore torch'
         #per ogni banda passo le clip al modello ed estraggo le ricostruzioni e le variabili latenti
@@ -111,7 +111,7 @@ class DeployVAEEG():
             rec, z = self.models[i](inputs[:,i,:])
             rec_signal.append(rec)
             latent_signal.append(z)
-        return torch.stack(rec_signal, dim = 1).sum(dim=1).flatten(), torch.cat(latent_signal, dim=1)
+        return rec_signal.transpose(0,1).flatten(1), torch.cat(latent_signal, dim=1)
         
 
 
@@ -132,8 +132,6 @@ class DeployBaseline():
         """
         #estraggo i dati e li scalo
         scale = 1.0e6
-        signal = signal.get_data()
-        signal = np.array(signal, np.float64)
         signal = signal * scale
         #sistemo la frequenza
         if fs != 250:
@@ -156,8 +154,8 @@ class DeployBaseline():
 
 def get_orig_rec_latent(raws, model):
     """
-    INPUT: lista di segnali raw EEG
-    OUTPUT: numpy array di originali = [N, ch_num, temp_len], ricostruzioni = [N, ch_num, temp_len], latenti dim [N, ch_num, clip_num, 50]
+    INPUT: lista di segnali EEG
+    OUTPUT: numpy array di originali = [N, ch_num, band_num, temp_len], ricostruzioni = [N, ch_num, band_num, temp_len], latenti dim [N, ch_num, clip_num, 50]
     """
     assert isinstance(raws, list), 'input deve essere una lista'
     if isinstance(model, DeployVAEEG):
@@ -176,43 +174,54 @@ def get_orig_rec_latent(raws, model):
                 c_r, c_l = model.run(ch)
                 ch_rec.append(c_r.detach().cpu().numpy())
                 ch_latent.append(c_l.detach().cpu().numpy())
+                #ogni cr,cl ha forma [bands_num, temp_len]
             rec.append(np.stack(ch_rec))
             latent.append(np.stack(ch_latent))
-        
-        for o in origs:
-            o.sum(dim=2)
-            o.reshape((o.shape[0], -1)).detach().cpu().numpy()
+            #ogni ch_rec, ch_latent ha forma [ch_num, bands_num, temp_len]
 
+        for i,o in enumerate(origs):
+            origs[i]=o.transpose(1,2).flatten(2)
+            origs[i]=origs[i].detach().cpu().numpy()
+        #ottengo una lista di numpy di form [ch_num, band_num, temp_len]
         return np.stack(origs), rec, latent 
     #[ch_num, clip_num, bands_num, clip_len]
     if isinstance(model, (PCA, FastICA)):
         origis = []
         for raw in raws:
             origis.append(model.preprocess())
+            #origis [N, ch_num, clup_num, clip_len]
         
         rec = []
         latent = []
         for ori in origis:
             ch_rec = []
             ch_latent = []
+            #ori [ch_num, clip_num, clip_len]
             for ch in ori:
+                #ch [clip_num, clip_len]
                 c_r, c_l = model.run(ch)
+                #cr,cl [temp]
                 ch_rec.append(c_r)
                 ch_latent.append(c_l)
             rec.append(np.stack(ch_rec))
             latent.append(np.stack(ch_latent))
-        return np.stack(origis, axis=0).reshape(origis.shape[0], origis.shape[1], -1), np.array(rec), np.array(latent)
-
+        return np.expand_dims(np.stack(origis, axis=0).flatten(2),axis=2), np.array(rec), np.array(latent)
 
     
 
 class PhaseComparison():
-    def __init__(self):
+    def __init__(self, model, save_files, params):
         self.BANDS =  [("delta", (1.0, 4.0)),
                   ("theta", (4.0, 8.0)),
                   ("alpha", (8.0, 13.0)),
                   ("low_beta", (13, 20)),
                   ("high_beta", (20, 30.0))]
+        if model == 'VAEEG':
+            self.model = DeployVAEEG(*save_files, *params)
+        elif model in ['PCA','KernelPCA','FastICA']:
+            model=DeployBaseline(save_files)
+        else:
+            raise Exception('Il modello specificato non è supportato')
     
     def compare_mo_wa_ps(self, orig, rec, l_freq=1, h_freq=30, fs=250):
         """
@@ -237,18 +246,22 @@ class PhaseComparison():
             res[k] = [np.abs((orig_phase[pick_index])-rec_phase[pick_index])]
         return res
     
-    def work(self, raws, model):
+    def work(self, raws):
         """
-        INPUT: lista di segnali raw
+        INPUT: lista di segnali EEG
         OUTPUT: Dataframe contenente l'errore medio di fase per banda
         """
-        orig, rec, _ = get_orig_rec_latent(raws, model) 
+        orig, rec, _ = get_orig_rec_latent(raws, self.model) 
+        #orig,rec hanno forma [N, ch_num, band_num, temp_len]
+        orig = orig.sum(axis=2)
+        rec = rec.sum(axis=2)
         res = []
         #per ogni coppia di valori calcolo la media per canale
         for o,r in zip(orig, rec):
+            #o,r hanno forma [ch_num, temp_len]
             ch_res = []
             for ch_o, ch_r in zip(o,r):
-                #calcolo l'errore di phase medio per banda
+                #ch_o,ch-r hanno forma [temp_len]
                 temp_res = self.compare_mo_wa_ps(ch_o.reshape(-1),ch_r.reshape(-1))
                 ch_res.append(list(temp_res.values()))
             #calcolo poi l'errore medio tra i canali per banda
@@ -322,7 +335,7 @@ class ConComparison():
 
     def get_con(self, orig, rec):
         """
-        INPUT: 2 segnali interi contenenti 19 canali
+        INPUT: 2 segnali interi contenenti 19 canali monobanda
         OUTPUT: le 4 matrici di connettività per
         """
         assert orig.shape[0] == len(STANDARD_1020) and rec.shape[0] == len(STANDARD_1020), 'i segnali devono avere i 19 canali dello standard 10-20'
@@ -344,37 +357,85 @@ class ConComparison():
                 rec_pvl[j,i] = rec_pvl[i,j]
         return orig_pcc, orig_pvl, rec_pcc, rec_pvl
     
-    def work(self, raws, model):
+    def work(self, raws):
         """
-        INPUT: Batch di segnali raw
-        OUTPUT: Matrici medie della connettività tra i segnali
+        INPUT: Batch di segnali EEG
+        OUTPUT: Matrici di connettività tra i segnali per banda [N, band_num, ch_num, ch_num]
         """
         #calcolo origin e rec
-        orig, rec, _ = get_orig_rec_latent(raws, model)
+        orig, rec, _ = get_orig_rec_latent(raws, self.model)
+        #orig,rec hanno forma [N, ch_num, band_num, temp_len]
 
         orig_pvl = []
         orig_pcc = []
         rec_pvl = []
         rec_pcc = []
-        for o, r in zip (orig, rec):
-            o_pcc, o_pvl, r_pcc, r_pvl = self.get_con(o,r)
-            orig_pcc.append(o_pcc)
-            orig_pvl.append(o_pvl)
-            rec_pcc.append(r_pcc)
-            rec_pvl.append(r_pvl)
-        orig_pcc = np.mean(np.stack(orig_pcc, axis=0), axis=0)
-        orig_pvl = np.mean(np.stack(orig_pvl, axis=0), axis=0)
-        rec_pcc = np.mean(np.stack(rec_pcc, axis=0), axis=0)
-        rec_pvl = np.mean(np.stack(rec_pvl, axis=0), axis=0)
+        for o, r in zip(orig, rec):
+            #o,r hanno forma [ch_num, band_num, temp_len]
+            band_o_pcc = []
+            band_o_pvl = []
+            band_r_pcc = []
+            band_r_pvl = []
+            for i in range(o.shape[1]):
+                o_pcc, o_pvl, r_pcc, r_pvl = self.get_con(o[:,i,:],r[:,i,:])
+                band_o_pcc.append(o_pcc)
+                band_o_pvl.append(o_pvl)
+                band_r_pcc.append(r_pcc)
+                band_r_pvl.append(r_pvl)
+            orig_pcc.append(band_o_pcc)
+            orig_pvl.append(band_o_pvl)
+            rec_pcc.append(band_r_pcc)
+            rec_pvl.append(band_r_pvl)
+        orig_pcc = np.stack(orig_pcc, axis=0)
+        orig_pvl = np.stack(orig_pvl, axis=0)
+        rec_pcc = np.stack(rec_pcc, axis=0)
+        rec_pvl = np.stack(rec_pvl, axis=0)
         
         return orig_pcc, orig_pvl, rec_pcc, rec_pvl
 
 
-def evaluate(data_dir, model_files, out_dir):
+def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, f_extensions='edf'):
     """
     INPUT: dove trovare i dati e dove trovare i modelli
-    OUTPUT: Il CCP medio orig/rec, l'NMRSE medio orig/rec, il dataframe delle differenze di fase, le matrici di connettività.
+    Ricavo una lista di campioni lunghi tot
+    poi su questi campioni calcolo l'errore di fase e la connettività per banda
+    OUTPUT: Grafici salvati come png delle matrici di correlazione della connettività e della fase
     """
 
+    path_list = utils.get_path_list(data_dir, f_extensions,False)
+    raws = []
+    for path in path_list:
+        raws = utils.get_raw(path, preload=True)
     
+    for i,_ in enumerate(raws):
+        raws[i] = raws[i].get_data()
+        raws[i] = np.array(raws[i], np.float64)
+        raws[i] = raws[i][:,cuts[0], cuts[1]]
+    
+    cc = ConComparison(model, model_files, params)
+    orig_pcc, orig_pvl, rec_pcc, rec_pvl = cc.work(raws, model)
+
+    pcc_mae = np.abs(orig_pcc - rec_pcc)
+    pcc_mae = pcc_mae.mean(axis=(0,2,3))
+    pvl_mae = np.abs(orig_pvl-rec_pvl)
+    pvl_mae = pvl_mae.mean(axis=(0,2,3))
+
+    pc = PhaseComparison(model, model_files, params)
+    pc_mae_df = pc.work(raws)
+
+    if graphs:
+        assert orig_pcc.shape[0] == 1 and rec_pcc.shape[0] == 1, "solo un campione per fare i grafici"
+        orig_pcc = orig_pcc[0]
+        rec_pcc = rec_pcc[0]
+
+        fig, axis = plt.subplot(2, 5, figsize=(4*5,10))
+
+        for j,tipe in enumerate([orig_pcc, orig_pvl]):
+            for i in range(5):
+                ax = axis[j,i]
+                im = ax.imshow(data)
+
+
+
+
 
