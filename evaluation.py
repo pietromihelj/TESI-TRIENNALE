@@ -11,6 +11,7 @@ from scipy.signal import hilbert
 from sklearn.decomposition import PCA, FastICA
 import utils
 import matplotlib.pyplot as plt
+import os
 
 STANDARD_1020 =  ['FP1', 'FP2', 'FZ', 'F3', 'F4', 'F7', 'F8', 'CZ', 'C3', 'C4', 'PZ', 'P3', 'P4', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
 
@@ -207,21 +208,23 @@ def get_orig_rec_latent(raws, model):
             latent.append(np.stack(ch_latent))
         return np.expand_dims(np.stack(origis, axis=0).flatten(2),axis=2), np.array(rec), np.array(latent)
 
-    
+def load_models(model, save_files, params=None):
+    if model == 'VAEEG':
+        model = DeployVAEEG(*save_files, *params)
+    elif model in ['PCA','KernelPCA','FastICA']:
+        model=DeployBaseline(save_files)
+    else:
+        raise Exception('Il modello specificato non è supportato')
+    return model
+
 
 class PhaseComparison():
-    def __init__(self, model, save_files, params):
+    def __init__(self):
         self.BANDS =  [("delta", (1.0, 4.0)),
                   ("theta", (4.0, 8.0)),
                   ("alpha", (8.0, 13.0)),
                   ("low_beta", (13, 20)),
                   ("high_beta", (20, 30.0))]
-        if model == 'VAEEG':
-            self.model = DeployVAEEG(*save_files, *params)
-        elif model in ['PCA','KernelPCA','FastICA']:
-            model=DeployBaseline(save_files)
-        else:
-            raise Exception('Il modello specificato non è supportato')
     
     def compare_mo_wa_ps(self, orig, rec, l_freq=1, h_freq=30, fs=250):
         """
@@ -246,12 +249,11 @@ class PhaseComparison():
             res[k] = [np.abs((orig_phase[pick_index])-rec_phase[pick_index])]
         return res
     
-    def work(self, raws):
+    def work(self, orig, rec):
         """
         INPUT: lista di segnali EEG
         OUTPUT: Dataframe contenente l'errore medio di fase per banda
         """
-        orig, rec, _ = get_orig_rec_latent(raws, self.model) 
         #orig,rec hanno forma [N, ch_num, band_num, temp_len]
         orig = orig.sum(axis=2)
         rec = rec.sum(axis=2)
@@ -269,21 +271,15 @@ class PhaseComparison():
             ch_res = np.mean(ch_res,axis=1)
         res.append(ch_res)
         #calcolo poi la media tra le coppie per banda
-        return pd.DataFrame(dict(zip(list(self.BANDS.keys()),np.mean(np.stack(res, axis=1), axis=1).tolist())))
+        return pd.DataFrame(dict(zip(list(self.BANDS.keys()),np.mean(np.stack(res, axis=1), axis=1).tolist()))).to_numpy()
 
 
 class ConComparison():
-    def __init__(self, model, save_files, params=None):
+    def __init__(self):
         """
         INPUT: Tipo di modello, file dove è salvato e parametri
         Carica la classe di deploy del modello da usare
         """
-        if model == 'VAEEG':
-            self.model = DeployVAEEG(*save_files, *params)
-        elif model in ['PCA','KernelPCA','FastICA']:
-            model=DeployBaseline(save_files)
-        else:
-            raise Exception('Il modello specificato non è supportato')
         
     def complex_data(self, data):
         """
@@ -357,15 +353,12 @@ class ConComparison():
                 rec_pvl[j,i] = rec_pvl[i,j]
         return orig_pcc, orig_pvl, rec_pcc, rec_pvl
     
-    def work(self, raws):
+    def work(self, orig, rec):
         """
         INPUT: Batch di segnali EEG
         OUTPUT: Matrici di connettività tra i segnali per banda [N, band_num, ch_num, ch_num]
         """
-        #calcolo origin e rec
-        orig, rec, _ = get_orig_rec_latent(raws, self.model)
         #orig,rec hanno forma [N, ch_num, band_num, temp_len]
-
         orig_pvl = []
         orig_pcc = []
         rec_pvl = []
@@ -401,6 +394,7 @@ def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, 
     poi su questi campioni calcolo l'errore di fase e la connettività per banda
     OUTPUT: Grafici salvati come png delle matrici di correlazione della connettività e della fase
     """
+    Bands = ['delta','theta','alpha','low_beta','high_beta']
 
     path_list = utils.get_path_list(data_dir, f_extensions,False)
     raws = []
@@ -412,30 +406,49 @@ def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, 
         raws[i] = np.array(raws[i], np.float64)
         raws[i] = raws[i][:,cuts[0], cuts[1]]
     
-    cc = ConComparison(model, model_files, params)
-    orig_pcc, orig_pvl, rec_pcc, rec_pvl = cc.work(raws, model)
+    model = load_models(model, model_files, params)
+    orig, rec, _ = get_orig_rec_latent(raws, model)
+    
+    cc = ConComparison()
+    orig_pcc, orig_pvl, rec_pcc, rec_pvl = cc.work(orig, rec)
 
     pcc_mae = np.abs(orig_pcc - rec_pcc)
     pcc_mae = pcc_mae.mean(axis=(0,2,3))
     pvl_mae = np.abs(orig_pvl-rec_pvl)
     pvl_mae = pvl_mae.mean(axis=(0,2,3))
 
-    pc = PhaseComparison(model, model_files, params)
-    pc_mae_df = pc.work(raws)
+    pc = PhaseComparison()
+    pc_mae = pc.work(orig, rec)
 
     if graphs:
         assert orig_pcc.shape[0] == 1 and rec_pcc.shape[0] == 1, "solo un campione per fare i grafici"
         orig_pcc = orig_pcc[0]
         rec_pcc = rec_pcc[0]
 
-        fig, axis = plt.subplot(2, 5, figsize=(4*5,10))
-
-        for j,tipe in enumerate([orig_pcc, orig_pvl]):
+        for j,data in enumerate([orig_pcc, orig_pvl]):
+            j='orig' if j==0 else j='rec'
+            fig, axis = plt.subplot(1, 5, figsize=(4*5,3))
+            v_min = data.min
+            v_max = data.max
             for i in range(5):
-                ax = axis[j,i]
-                im = ax.imshow(data)
+                ax = axis[i]
+                im = ax.imshow(data[i], champ='coolwarm', origin='upper', vmin=v_min, vmax=v_max)
+                ax.set_title(f'Banda {Bands[i]}')
+                ax.set_xticks(np.arange(len(STANDARD_1020)))
+                ax.set_xticklabels(STANDARD_1020, rotation=90)
+                ax.set_yticks(np.arange(len(STANDARD_1020)))
+                ax.set_yticklabels(STANDARD_1020)
+            cbar_ax = fig.add_axes([0.92, 0.15, 0.01, 0.7])
+            fig.colorbar(im, cax=cbar_ax, )
+            fig.supxlabel('Channels')
+            fig.supylabel('Channels')
+            path = os.path.join(out_dir,f'Rec_eval/heatmap{j}.png')
+            plt.savefig(path)
 
-
-
-
-
+    pears_is = []
+    nrmse_s = []
+    for o,r in zip(orig, rec):
+        pears_is.append(pearson_index(o,r))
+        nrmse_s.append(NRMSE(o,r))
+        
+    return pcc_mae, pvl_mae, pc_mae, np.mean(np.array(pears_is)), np.mean(np.array(nrmse_s))
