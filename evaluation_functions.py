@@ -109,7 +109,7 @@ class DeployVAEEG():
         latent_signal = []
         #ogni banda ha forma [clip_num, 1, clip_len]
         for i in range(inputs.shape[1]):
-            rec, z = self.models[i](inputs[:,i,:])
+            rec, z = self.models[i](inputs[:,i:i+1,:])
             rec_signal.append(rec)
             latent_signal.append(z)
         return rec_signal.transpose(0,1).flatten(1), torch.cat(latent_signal, dim=1)
@@ -161,12 +161,13 @@ def get_orig_rec_latent(raws, model):
     assert isinstance(raws, list), 'input deve essere una lista'
     if isinstance(model, DeployVAEEG):
         origs = []
-        #origin diventa una lista di tensori di forma [ch_num, clip_num, bands_num, clip_len]
+        #origin diventa una lista di forma [N, ch_num, clip_num, bands_num, clip_len]
         for raw in raws:
             origs.append(model.preprocess(raw))
         
         rec = []
         latent = []
+        #ogni ori ha forma [ch_num, bands_num, clip_len]
         for ori in origs:
             ch_rec = []
             ch_latent = []

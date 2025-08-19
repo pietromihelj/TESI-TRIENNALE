@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import numpy as np
 
+"""
 # Dati di esempio
 modelli = ['Mod1', 'Mod2', 'Mod3', 'Mod4', 'Mod5']
 bande = ['Banda1', 'Banda2', 'Banda3', 'Banda4', 'Banda5']
@@ -39,9 +40,8 @@ plt.title("Istogramma raggruppato per bande e modelli")
 plt.legend()
 plt.tight_layout()
 plt.show()
-
-
 """
+
 path_list = get_path_list("D:/nchsdb/sleep_data", ['.edf'])
 print(len(path_list))
 
@@ -68,4 +68,3 @@ print('#########################################################################
 print(f'Lunghezza media: {mean_len:.2f}   Lunghezza massima: {max_len:.2f}  Lunghezza minima: {min_len:.2f}')
 print('###################################################################################################')
 print('Counter dei canali: ', chs)
-"""
