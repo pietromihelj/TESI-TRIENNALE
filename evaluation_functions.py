@@ -387,7 +387,7 @@ class ConComparison():
         return orig_pcc, orig_pvl, rec_pcc, rec_pvl
 
 
-def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, f_extensions='edf'):
+def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, f_extensions=['edf']):
     """
     INPUT: dove trovare i dati e dove trovare i modelli
     Ricavo una lista di campioni lunghi tot
@@ -404,7 +404,7 @@ def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, 
     for i,_ in enumerate(raws):
         raws[i] = raws[i].get_data()
         raws[i] = np.array(raws[i], np.float64)
-        raws[i] = raws[i][:,cuts[0], cuts[1]]
+        raws[i] = raws[i][:,cuts[0]:cuts[1]]
     
     model = load_models(model, model_files, params)
     orig, rec, _ = get_orig_rec_latent(raws, model)
