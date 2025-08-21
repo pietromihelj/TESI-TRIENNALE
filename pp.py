@@ -41,7 +41,7 @@ plt.legend()
 plt.tight_layout()
 plt.show()
 """
-
+"""
 path_list = get_path_list("D:/nchsdb/sleep_data", ['.edf'])
 print(len(path_list))
 
@@ -55,6 +55,7 @@ for path in tqdm(path_list):
     cha.append(raw.info['ch_names'])
     eeg = raw.get_data()
     lenght_h.append(eeg.shape[1]/int(fs[0])/60/60)
+    break
 
 freq = Counter(fs)
 chs = Counter(np.array(cha).flatten())
@@ -68,3 +69,8 @@ print('#########################################################################
 print(f'Lunghezza media: {mean_len:.2f}   Lunghezza massima: {max_len:.2f}  Lunghezza minima: {min_len:.2f}')
 print('###################################################################################################')
 print('Counter dei canali: ', chs)
+"""
+import pandas as pd
+
+df = pd.read_csv('nchsdb-dataset-0.3.0.csv')
+print(int(df.loc[df['filename_id'] == '1_4789', 'age_at_sleep_study_days'].iloc[0]))

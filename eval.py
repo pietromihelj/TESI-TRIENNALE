@@ -75,5 +75,5 @@ for i in range(2):
     plt.legend()
     plt.tight_layout()
     path = os.path.join(out_dir, f'{y_labs[i]}.png')
+    plt.savefig(path)
     plt.show()
-
