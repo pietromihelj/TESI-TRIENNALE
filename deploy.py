@@ -134,8 +134,8 @@ def get_orig_rec_latent(raws, model):
                 ch_rec.append(c_r.detach().cpu().numpy())
                 ch_latent.append(c_l.detach().cpu().numpy())
                 #ogni cr,cl ha forma [bands_num, temp_len]
-            rec.append(np.stack(ch_rec))
-            latent.append(np.stack(ch_latent))
+            rec.append(np.array(ch_rec))
+            latent.append(np.array(ch_latent))
             #ogni ch_rec, ch_latent ha forma [ch_num, bands_num, temp_len] [ch_num, bands_num, clip_num*50]
 
         for i,o in enumerate(origs):
@@ -162,8 +162,8 @@ def get_orig_rec_latent(raws, model):
                 #cr,cl [temp_len] [clip_num*50]
                 ch_rec.append(c_r)
                 ch_latent.append(c_l)
-            rec.append(np.stack(ch_rec))
-            latent.append(np.stack(ch_latent))
+            rec.append(np.array(ch_rec))
+            latent.append(np.array(ch_latent))
         return np.expand_dims(np.stack(origis, axis=0).flatten(2),axis=2), np.array(rec), np.array(latent)
     
 def load_models(model, save_files, params=None):
