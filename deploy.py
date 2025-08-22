@@ -88,7 +88,7 @@ class DeployVAEEG():
             rec, z = self.models[i](inputs[:,i:i+1,:])
             rec_signal.append(rec)
             latent_signal.append(z)
-        return rec_signal.transpose(0,1).flatten(1), torch.cat(latent_signal, dim=1).flatten()
+        return rec_signal.transpose(0,1).flatten(1), torch.cat(latent_signal, dim=1)
 
 class DeployBaseline():
     def __init__(self, path):
@@ -139,12 +139,12 @@ class DeployBaseline():
         z = self.model.transform(inputs)
         #prendo le ricostruzioni per ogni clip
         rec = self.model.inverse_transform(z)
-        return rec.flatten(), z.flatten()
+        return rec.flatten(), z
 
 def get_orig_rec_latent(raws, model):
     """
     INPUT: lista di segnali EEG numpy
-    OUTPUT: numpy array di originali = [N, ch_num, band_num, temp_len], ricostruzioni = [N, ch_num, band_num, temp_len], latenti dim [N, ch_num, clip_num*50]
+    OUTPUT: numpy array di originali = [N, ch_num, band_num, temp_len], ricostruzioni = [N, ch_num, band_num, temp_len], latenti dim [N, ch_num, clip_num ,50]
     """
     assert isinstance(raws, list), 'input deve essere una lista'
     if isinstance(model, DeployVAEEG):

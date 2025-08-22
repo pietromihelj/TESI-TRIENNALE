@@ -3,6 +3,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import  mean_absolute_error, r2_score
 from deploy import load_models, get_orig_rec_latent
+from scipy.stats import pearsonr
 import utils as u
 import numpy as np
 import pandas as pd
@@ -13,6 +14,7 @@ channels = []
 cuts = []
 model_names = []
 model_paths = []
+params = []
 
 #carico i path dei dati da rivedere con il nuovo dataset
 paths_list = u.get_path_list(d_path=d_path, f_extensions=['.edf'])
@@ -24,6 +26,7 @@ ages = []
 for path in paths_list:
     raw = u.get_raw(path)
     raw.pick_channels(channels)
+    channels = raw.info['ch_names']
     raw = raw.get_data()
     raw = np.array(raw, np.float64)
     raw = raw[:,cuts[0]:cuts[1]]
@@ -42,14 +45,18 @@ predictors = [
 
 results = {}
 
+"""
+Nella successiva parte di codice trovo il modello di embedding che funziona meglio sulla regressione delle età.
+Considero una singola clip come campione. per ogni soggetto prendo come età la media delle clip
+"""
 #itero su ogni modello di embedding
-for i,model_name, model_file in enumerate(zip(model_names,model_paths):
+for model_name, model_file, param in zip(model_names,model_paths, params):
     #per ognungo creo la stratifiedkfold
     skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=10)
     quantiles = pd.qcut(ages, q=5, labels=False)
     #prendo le var latent
-    mode=load_models(model, model_file)
-    _,_,latent = get_orig_rec_latent(raws, mode)
+    model=load_models(model_name, model_file, param)
+    _,_,latent = get_orig_rec_latent(raws, model)
     latent = u.stride_data(latent, n_per_seg=50, n_overlap = 0)
     #latent ha forma [N, ch_num, clip_num, 50]
     latent = latent.reshape(latent.shape[0], latent.shape[2], -1)
@@ -59,9 +66,9 @@ for i,model_name, model_file in enumerate(zip(model_names,model_paths):
     for name,pred in predictors:
         par_mae = []
         par_r2 = []
-        for idx, (tr_idx, te_idx) in skf.split(latents, quantiles):
-            tr_X = latents[tr_idx]
-            te_X = latents[te_idx] 
+        for idx, (tr_idx, te_idx) in skf.split(latent, quantiles):
+            tr_X = latent[tr_idx]
+            te_X = latent[te_idx] 
             tr_Y = ages[tr_idx]
             te_Y = ages[te_idx]
             pred.fit(tr_X, tr_Y)
@@ -84,3 +91,25 @@ for model_name, metrics_list in results.items():
 
 df = pd.DataFrame(rows)
 df.to_csv('age_results.csv', index = False)
+
+"""
+Nella successiva parte di codice calcolo il PCC tra le variabli latenti e le età.
+Prendo come valore delle variabili latenti per un soggetto la mediana dei valori latenti lungo la dimensione temporale 
+"""
+
+for model_name, model_file, param in zip(model_names, model_paths, params):
+    model = load_models(model=model_name, save_files=model_file, params=param)
+    _,_,latent = get_orig_rec_latent(raws, model)
+    #latent ha forma [N, ch_num, clip_num, 50]
+    #calcolo la mediana lungo l'asse temporale per ogni soggetto e per ogni canale
+    latent = np.median(latent, axis=2)
+    #per ogni soggetto calcolo il pcc su ogni dimensione latente lungo ogni canale
+    _, ch_num, latent_dim = latent.shape
+    pcc = np.zeros((ch_num, latent_dim))
+
+    for ch in range(ch_num):
+        for l_var in range(latent_dim):
+            pcc[ch,l_var] = pearsonr(latent[:, ch, l_var], ages)[0]
+    
+    df = pd.DataFrame(pcc, index=channels, columns=[f"latent_{d}" for d in range(pcc.shape[1])])
+    df.to_csv(model_name+"_pearson_latent.csv", index=True)
