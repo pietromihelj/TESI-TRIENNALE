@@ -5,7 +5,8 @@ import mne
 from utils import stride_data
 from sklearn.decomposition import PCA, FastICA
 from model import VAEEG
-
+import portion as P
+from utils import find_artefacts_2d, merge_continuous_artifacts
 
 class DeployVAEEG():
     def __init__(self, paths, params):
@@ -28,9 +29,9 @@ class DeployVAEEG():
             model.to(device)
             model.eval()
 
-    def preprocess(self, signal, fs=250):
+    def preprocess(self, signal, amp_th = 400, m_len=1.0, drop = 60, fs=250):
         """
-        INPUT: segnale come EEG raw [n_channels, temp_len]
+        INPUT: segnale come EEG numpy [n_channels, temp_len]
         OUTPUT: torch tensor della forma=[ch_num, clip_num, bands_num, clip_len]
         """
         #inizializzo scala e bande
@@ -46,10 +47,26 @@ class DeployVAEEG():
         if fs != 250:
             ratio = 250/fs
             signal = mne.filter.resample(signal, ratio, verbose=False)
+        
+        mth = int(m_len*fs)
+        start = int(drop*fs)
+        end = signal.shape[1] - int(drop*fs)
+        whole_r = P.closed(start, end)
+        flag = np.abs(signal) > amp_th
+        art = find_artefacts_2d(flag)
+        merged_art = [merge_continuous_artifacts(s, mth) for s in art]
+        c_clean = [whole_r - s for s in merged_art]
+        valid_idx = []
+        for intervals in c_clean:
+            for interval in intervals:
+                idx_range = np.arange(interval.lower, interval.upper + 1)
+                valid_idx.append(idx_range)
+        clean_signal = signal[:,valid_idx]
+        
         out = []
         #separo il segnale in 5 bande
         for _, (lf, hf) in BANDS:
-            band = mne.filter.filter_data(signal, 250, l_freq=lf, h_freq=hf, filter_length='auto', fir_design='firwin',verbose=False).astype(np.float32) 
+            band = mne.filter.filter_data(clean_signal, 250, l_freq=lf, h_freq=hf, filter_length='auto', fir_design='firwin',verbose=False).astype(np.float32) 
             #separo il segnale in clip lunghe 1 secondo
             clips = stride_data(band, 250, 0)
             out.append(clips)
@@ -83,9 +100,9 @@ class DeployBaseline():
             self.model = pickle.load(f)
         print('Modello caricato')
 
-    def preprocess(self, signal, fs=250):
+    def preprocess(self, signal, amp_th = 400, m_len=1.0, drop = 60 ,fs=250):
         """
-        INPUT: segnale EEG raw [ch_num, temp_len]
+        INPUT: segnale EEG numpy [ch_num, temp_len]
         OUTPUT: numpy array segnale segmentato in clip da 1 secondo [ch_num, clip_num, clip_len]
         """
         #estraggo i dati e li scalo
@@ -96,7 +113,21 @@ class DeployBaseline():
             ratio = 250/fs
             signal = mne.filter.resample(signal, ratio, verbose=False)
         #separo in clip
-        clips = stride_data(signal, 250,0)
+        mth = int(m_len*fs)
+        start = int(drop*fs)
+        end = signal.shape[1] - int(drop*fs)
+        whole_r = P.closed(start, end)
+        flag = np.abs(signal) > amp_th
+        art = find_artefacts_2d(flag)
+        merged_art = [merge_continuous_artifacts(s, mth) for s in art]
+        c_clean = [whole_r - s for s in merged_art]
+        valid_idx = []
+        for intervals in c_clean:
+            for interval in intervals:
+                idx_range = np.arange(interval.lower, interval.upper + 1)
+                valid_idx.append(idx_range)
+        clean_signal = signal[:,valid_idx]
+        clips = stride_data(clean_signal, 250,0)
         return clips
 
     def run(self, inputs):
