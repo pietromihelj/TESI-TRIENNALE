@@ -8,6 +8,12 @@ import numpy as np
 import pandas as pd
 import os
 
+d_path = []
+channels = []
+cuts = []
+model_names = []
+model_paths = []
+
 #carico i path dei dati da rivedere con il nuovo dataset
 paths_list = u.get_path_list(d_path=d_path, f_extensions=['.edf'])
 df = pd.read_csv('nchsdb-dataset-0.3.0.csv')
@@ -44,7 +50,9 @@ for i,model_name, model_file in enumerate(zip(model_names,model_paths):
     #prendo le var latent
     mode=load_models(model, model_file)
     _,_,latent = get_orig_rec_latent(raws, mode)
-    latents.append(latent)
+    latent = u.stride_data(latent, n_per_seg=50, n_overlap = 0)
+    #latent ha forma [N, ch_num, clip_num, 50]
+    latent = latent.reshape(latent.shape[0], latent.shape[2], -1)
     #partial res conterra i risultati per il modello
     partial_res = []
     #per ogni predittore eseguo la k_fold
@@ -58,6 +66,7 @@ for i,model_name, model_file in enumerate(zip(model_names,model_paths):
             te_Y = ages[te_idx]
             pred.fit(tr_X, tr_Y)
             y_pred = pred.predict(te_X)
+            y_pred = np.mean(y_pred)
             par_mae.append(mean_absolute_error(y_pred=y_pred, y_true=te_Y))
             par_r2.append(r2_score(y_pred=y_pred, y_true=te_Y))
         partial_res.append(((name+'_MAE', np.mean(par_mae)),(name+'_r2', np.mean(par_r2))))
@@ -74,11 +83,4 @@ for model_name, metrics_list in results.items():
         })
 
 df = pd.DataFrame(rows)
-
-
-
-
-
-
-    
-
+df.to_csv('age_results.csv', index = False)
