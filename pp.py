@@ -1,3 +1,4 @@
+"""
 from utils import get_path_list, get_raw
 from collections import Counter
 import numpy as np
@@ -9,7 +10,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import numpy as np
 
-"""
 # Dati di esempio
 modelli = ['Mod1', 'Mod2', 'Mod3', 'Mod4', 'Mod5']
 bande = ['Banda1', 'Banda2', 'Banda3', 'Banda4', 'Banda5']
@@ -70,7 +70,9 @@ print(f'Lunghezza media: {mean_len:.2f}   Lunghezza massima: {max_len:.2f}  Lung
 print('###################################################################################################')
 print('Counter dei canali: ', chs)
 """
-import pandas as pd
 
-df = pd.read_csv('nchsdb-dataset-0.3.0.csv')
-print(int(df.loc[df['filename_id'] == '1_4789', 'age_at_sleep_study_days'].iloc[0]))
+import mne
+import numpy as np
+eeg = mne.io.read_raw_edf("D:/nmt_scalp_eeg_dataset/normal/eval/0000024.edf")
+print(len(eeg.info['ch_names']))
+print(eeg.get_data().shape[1]/250/60)

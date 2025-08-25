@@ -16,15 +16,15 @@ cd /u/pmihelj/TESI-TRIENNALE
 python3 -u model_training.py \
 --model_dir "/u/pmihelj/models" \
 --in_channels 1 \
---z_dim 10 \
+--z_dim 8 \
 --negative_slope 0.2 \
 --decoder_last_lstm \
---ckpt_file "/u/pmihelj/models/VAEEG_low_beta_z10/ckpt_epoch_1045_45900000.ckpt" \
+--ckpt_file "/u/pmihelj/models/VAEEG_delta_z8/ckpt_epoch_1235_50700000.ckpt" \
 --data_dir "/u/pmihelj/datasets/Training_dataset/train" \
---band_name "low_beta" \
+--band_name "delta" \
 --clip_len 250 \
 --batch_size 24 \
---n_epochs 200 \
+--n_epochs 400 \
 --lr 0.0001 \
 --beta 0.01 \
 --n_print 300000 \

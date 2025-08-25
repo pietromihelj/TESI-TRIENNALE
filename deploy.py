@@ -56,13 +56,11 @@ class DeployVAEEG():
         art = find_artefacts_2d(flag)
         merged_art = [merge_continuous_artifacts(s, mth) for s in art]
         c_clean = [whole_r - s for s in merged_art]
-        valid_idx = []
-        for intervals in c_clean:
-            for interval in intervals:
-                idx_range = np.arange(interval.lower, interval.upper + 1)
-                valid_idx.append(idx_range)
+        common_intervals = c_clean[0]
+        for ch_intervals in c_clean[1:]:
+            common_intervals = common_intervals & ch_intervals
+        valid_idx = np.concatenate([np.arange(interval.lower, interval.upper + 1) for interval in common_intervals])
         clean_signal = signal[:,valid_idx]
-        
         out = []
         #separo il segnale in 5 bande
         for _, (lf, hf) in BANDS:
@@ -98,7 +96,7 @@ class DeployBaseline():
         """
         with open(path,'rb') as f:
             self.model = pickle.load(f)
-        print('Modello caricato')
+        print('Modello caricato: ', type(self.model) )
 
     def preprocess(self, signal, amp_th = 400, m_len=1.0, drop = 60 ,fs=250):
         """
@@ -107,12 +105,11 @@ class DeployBaseline():
         """
         #estraggo i dati e li scalo
         scale = 1.0e6
-        signal = signal * scale
+        #signal = signal * scale
         #sistemo la frequenza
         if fs != 250:
             ratio = 250/fs
             signal = mne.filter.resample(signal, ratio, verbose=False)
-        #separo in clip
         mth = int(m_len*fs)
         start = int(drop*fs)
         end = signal.shape[1] - int(drop*fs)
@@ -121,12 +118,12 @@ class DeployBaseline():
         art = find_artefacts_2d(flag)
         merged_art = [merge_continuous_artifacts(s, mth) for s in art]
         c_clean = [whole_r - s for s in merged_art]
-        valid_idx = []
-        for intervals in c_clean:
-            for interval in intervals:
-                idx_range = np.arange(interval.lower, interval.upper + 1)
-                valid_idx.append(idx_range)
+        common_intervals = c_clean[0]
+        for ch_intervals in c_clean[1:]:
+            common_intervals = common_intervals & ch_intervals
+        valid_idx = np.concatenate([np.arange(interval.lower, interval.upper + 1) for interval in common_intervals])
         clean_signal = signal[:,valid_idx]
+        #separo in clip
         clips = stride_data(clean_signal, 250,0)
         return clips
 
@@ -141,61 +138,45 @@ class DeployBaseline():
         rec = self.model.inverse_transform(z)
         return rec.flatten(), z
 
-def get_orig_rec_latent(raws, model):
+def get_orig_rec_latent(raw, model):
     """
     INPUT: lista di segnali EEG numpy
-    OUTPUT: numpy array di originali = [N, ch_num, band_num, temp_len], ricostruzioni = [N, ch_num, band_num, temp_len], latenti dim [N, ch_num, clip_num ,50]
+    OUTPUT: numpy array originale = [ch_num, band_num, temp_len], ricostruzione = [ch_num, band_num, temp_len], latente dim [ch_num, clip_num ,50]
     """
-    assert isinstance(raws, list), 'input deve essere una lista'
+    assert isinstance(raw, np.ndarray), 'input deve essere una array numpy'
     if isinstance(model, DeployVAEEG):
-        origs = []
-        #origin diventa una lista di forma [N, ch_num, clip_num, bands_num, clip_len]
-        for raw in raws:
-            origs.append(model.preprocess(raw))
-        
-        rec = []
-        latent = []
-        #ogni ori ha forma [ch_num, bands_num, clip_len]
-        for ori in origs:
-            ch_rec = []
-            ch_latent = []
-            #ogni canale ha forma [clip_num, bands_num, clip_len]
-            for ch in ori:
-                c_r, c_l = model.run(ch)
-                ch_rec.append(c_r.detach().cpu().numpy())
-                ch_latent.append(c_l.detach().cpu().numpy())
-                #ogni cr,cl ha forma [bands_num, temp_len]
-            rec.append(np.array(ch_rec))
-            latent.append(np.array(ch_latent))
-            #ogni ch_rec, ch_latent ha forma [ch_num, bands_num, temp_len] [ch_num, bands_num, clip_num*50]
+        orig = model.preprocess(signal=raw)
+        #origin diventa una lista di forma [ch_num, clip_num, bands_num, clip_len]
+        ch_rec = []
+        ch_latent = []
+        #ogni canale ha forma [clip_num, bands_num, clip_len]
+        for ch in orig:
+            c_r, c_l = model.run(ch)
+            ch_rec.append(c_r.detach().cpu().numpy())
+            ch_latent.append(c_l.detach().cpu().numpy())
+            #ogni cr,cl ha forma [bands_num, temp_len]
+        rec = np.stack(ch_rec, axis=0)
+        latent= np.stack(ch_latent, axis=0)
+        orig=orig.transpose(1,2).flatten(2)
+        orig=orig.detach().cpu().numpy()
+        #ottengo una array numpy di forma [ch_num, band_num, temp_len]
+        return np.array(orig), np.array(rec), np.array(latent) 
 
-        for i,o in enumerate(origs):
-            origs[i]=o.transpose(1,2).flatten(2)
-            origs[i]=origs[i].detach().cpu().numpy()
-        #ottengo una lista di numpy di form [ch_num, band_num, temp_len]
-        return np.array(origis), np.array(rec), np.array(latent) 
-    #[ch_num, clip_num, bands_num, clip_len]
-    if isinstance(model, (PCA, FastICA)):
-        origis = []
-        for raw in raws:
-            origis.append(model.preprocess())
+    if isinstance(model, DeployBaseline):
+        orig = model.preprocess(signal=raw)
             #origis [N, ch_num, clup_num, clip_len]
-        
-        rec = []
-        latent = []
-        for ori in origis:
-            ch_rec = []
-            ch_latent = []
-            #ori [ch_num, clip_num*clip_len]
-            for ch in ori:
-                #ch [clip_num, clip_len]
-                c_r, c_l = model.run(ch)
-                #cr,cl [temp_len] [clip_num*50]
-                ch_rec.append(c_r)
-                ch_latent.append(c_l)
-            rec.append(np.array(ch_rec))
-            latent.append(np.array(ch_latent))
-        return np.expand_dims(np.stack(origis, axis=0).flatten(2),axis=2), np.array(rec), np.array(latent)
+        ch_rec = []
+        ch_latent = []
+        #ori [ch_num, clip_num*clip_len]
+        for ch in orig:
+            #ch [clip_num, clip_len]
+            c_r, c_l = model.run(ch)
+            #cr,cl [temp_len] = [clip_num*50]
+            ch_rec.append(c_r)
+            ch_latent.append(c_l)
+        rec= np.stack(ch_rec, axis=0)
+        latent = (np.stack(ch_latent, axis=0))
+        return np.expand_dims(orig.reshape(orig.shape[0],-1),axis=1), np.expand_dims(np.array(rec), axis=1), np.array(latent)
     
 def load_models(model, save_files, params=None):
     if model == 'VAEEG':

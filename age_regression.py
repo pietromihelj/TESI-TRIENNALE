@@ -96,7 +96,6 @@ df.to_csv('age_results.csv', index = False)
 Nella successiva parte di codice calcolo il PCC tra le variabli latenti e le età.
 Prendo come valore delle variabili latenti per un soggetto la mediana dei valori latenti lungo la dimensione temporale 
 """
-
 for model_name, model_file, param in zip(model_names, model_paths, params):
     model = load_models(model=model_name, save_files=model_file, params=param)
     _,_,latent = get_orig_rec_latent(raws, model)

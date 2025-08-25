@@ -8,6 +8,7 @@ import utils
 import matplotlib.pyplot as plt
 import os
 from deploy import get_orig_rec_latent, load_models
+from tqdm import tqdm
 
 STANDARD_1020 =  ['FP1', 'FP2', 'FZ', 'F3', 'F4', 'F7', 'F8', 'CZ', 'C3', 'C4', 'PZ', 'P3', 'P4', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
 
@@ -57,7 +58,7 @@ class PhaseComparison():
         INPUT: segnale e la sua ricostruzione monocanale [temp_len], come array numpy
         OUTPUT: dizionario con l'errore medio per banda della differenza di fase
         """
-        assert isinstance(orig, np.array) and isinstance(rec, np.array), 'input deve essere numpy array'
+        assert isinstance(orig, np.ndarray) and isinstance(rec, np.ndarray), 'input deve essere numpy array'
         #creo la lista delle scale per trovare le frequenze
         scales = np.arange(fs/2/h_freq, fs/2/l_freq, 1)
         #calcolo le trasformate wavelet morlet
@@ -81,8 +82,8 @@ class PhaseComparison():
         OUTPUT: Dataframe contenente l'errore medio di fase per banda
         """
         #orig,rec hanno forma [N, ch_num, band_num, temp_len]
-        orig = orig.sum(axis=2)
-        rec = rec.sum(axis=2)
+        orig = [o.sum(axis=1) for o in orig]
+        rec = [r.sum(axis=1) for r in rec]
         res = []
         #per ogni coppia di valori calcolo la media per canale
         for o,r in zip(orig, rec):
@@ -130,7 +131,7 @@ class ConComparison():
         INPUT: segnale multicanale [ch_num, temp_len]
         OUTPUT: matrice di correlazione tra i canali
         """
-        assert isinstance(data, np.array), 'input deve essere numpy array'
+        assert isinstance(data, np.ndarray), 'input deve essere numpy array'
         #calcolo la matrice di correlazione
         data = data - data.mean(axis=-1, keepdims=True)
         div_on = np.matmul(data, data.T)
@@ -144,12 +145,12 @@ class ConComparison():
         INPUT: 2 segnali monocanale complessi [temp_len]
         OUTPUT: phase lock value tra i 2 canali
         """
-        assert data_a.dtype in (np.complex64, np.complex128) and data_b.dtype in (np.complex64, np.complex128),  'data type must be complex , got %s %s'%(data_a.dtype, data_b.dtype)
+        assert data_a.dtype == complex and data_b.dtype == complex,  'data type must be complex , got %s %s'%(data_a.dtype, data_b.dtype)
         #calcolo la fase
         data_a = np.arctan(data_a.imag / data_a.real)
         data_b = np.arctan(data_b.imag / data_b.real)
         #calcolo la differenza di fase per campione
-        t = np.exp(np.complex(0,1)*(data_a-data_b))
+        t = np.exp(complex(0,1)*(data_a-data_b))
         #calcolo il pvl 
         t_len = t.shape[-1]
         t = np.abs(np.sum(t,axis=-1))/t_len
@@ -172,10 +173,14 @@ class ConComparison():
 
         #per ogni coppia di canali calcolo il pvl e poi lo specchio nella matrice
         for i in range(ch_num):
+            or_i = self.complex_data(orig[i])
+            re_i = self.complex_data(rec[i])
             for j in range(i+1, ):
-                orig_pvl[i, j] = self.pvl_con(orig[i], orig[j])
+                or_j = self.complex_data(orig[j])
+                re_j = self.complex_data(rec[j])
+                orig_pvl[i, j] = self.pvl_con(or_i, or_j)
                 orig_pvl[j, i] = orig_pvl[i, j]  
-                rec_pvl[i,j] = self.pvl_con(rec[i], rec[j])
+                rec_pvl[i,j] = self.pvl_con(re_i, re_j)
                 rec_pvl[j,i] = rec_pvl[i,j]
         return orig_pcc, orig_pvl, rec_pcc, rec_pvl
     
@@ -212,8 +217,47 @@ class ConComparison():
         
         return orig_pcc, orig_pvl, rec_pcc, rec_pvl
 
+def check_channel_names(raw_obj, verbose):
+        ch_map = ["EEG FP1-REF", "EEG FP1-LE", "EEG FP1", "FP1",
+        "EEG FP2-REF", "EEG FP2-LE", "EEG FP2", "FP2",
+        "EEG F3-REF", "EEG F3-LE", "EEG F3", "F3",
+        "EEG F4-REF", "EEG F4-LE", "EEG F4", "F4",
+        "EEG FZ-REF", "EEG FZ-LE", "EEG FZ", "FZ",
+        "EEG F7-REF", "EEG F7-LE", "EEG F7", "F7",
+        "EEG F8-REF", "EEG F8-LE", "EEG F8", "F8",
+        "EEG P3-REF", "EEG P3-LE", "EEG P3", "P3",
+        "EEG P4-REF", "EEG P4-LE", "EEG P4", "P4",
+        "EEG PZ-REF", "EEG PZ-LE", "EEG PZ", "PZ",
+        "EEG C3-REF", "EEG C3-LE", "EEG C3", "C3",
+        "EEG C4-REF", "EEG C4-LE", "EEG C4", "C4",
+        "EEG CZ-REF", "EEG CZ-LE", "EEG CZ", "CZ",
+        "EEG T3-REF", "EEG T3-LE", "EEG T3", "T3",
+        "EEG T4-REF", "EEG T4-LE", "EEG T4", "T4",
+        "EEG T5-REF", "EEG T5-LE", "EEG T5", "T5",
+        "EEG T6-REF", "EEG T6-LE", "EEG T6", "T6",
+        "EEG O1-REF", "EEG O1-LE", "EEG O1", "O1",
+        "EEG O2-REF", "EEG O2-LE", "EEG O2", "O2"]
+        ch_necessary = ['FP1', 'FP2', 'F3', 'F4', 'FZ', 'F7', 'F8', 'P3', 'P4', 'PZ', 'C3', 'C4', 'CZ', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
+        #mappa dei nomi dai possibili usati ad uno standard semplice
+        ch_mapper = {}
+        for i in range(0, len(ch_map), 4):
+            standard_name = ch_map[i + 3]
+            for j in range(4):
+                ch_mapper[ch_map[i + j]] = standard_name
+        
+        #rinomino i canali
+        existing_channels = set(raw_obj.info['ch_names'])
+        filtered_ch_mapper = {old: new for old, new in ch_mapper.items() if old in existing_channels}
+        raw_obj.rename_channels(filtered_ch_mapper)
+        ch_names = set(raw_obj.ch_names)
 
-def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, f_extensions=['edf']):
+        #controllo che tutti i nomi dei canali siano presenti
+        if set(ch_necessary).issubset(ch_names):
+            raw_obj.pick(ch_necessary)
+        else:
+            raise RuntimeError("Channel Error")
+
+def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, f_extensions=['.edf']):
     """
     INPUT: dove trovare i dati e dove trovare i modelli
     Ricavo una lista di campioni lunghi tot
@@ -223,26 +267,37 @@ def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, 
     Bands = ['delta','theta','alpha','low_beta','high_beta']
 
     path_list = utils.get_path_list(data_dir, f_extensions,False)
-    raws = []
-    for path in path_list:
+    model = load_models(model, model_files, params)
+    origis = []
+    recs = []
+    for j,path in enumerate(path_list):
         raw = utils.get_raw(path, preload=True)
+        check_channel_names(raw_obj=raw, verbose=False)
         raw = raw.get_data()
         raw = np.array(raw, np.float64)
         raw = raw[:,cuts[0]:cuts[1]]
-        
-    model = load_models(model, model_files, params)
-    orig, rec, _ = get_orig_rec_latent(raws, model)
+        orig, rec, _ = get_orig_rec_latent(raw, model)
+        origis.append(orig)
+        recs.append(rec)
+        if j == 2:
+            break
+    print('CHECKPOINT: Fine calcolo originali e ricostruzioni')
+    
     
     cc = ConComparison()
-    orig_pcc, orig_pvl, rec_pcc, rec_pvl = cc.work(orig, rec)
+    orig_pcc, orig_pvl, rec_pcc, rec_pvl = cc.work(origis, recs)
 
     pcc_mae = np.abs(orig_pcc - rec_pcc)
     pcc_mae = pcc_mae.mean(axis=(0,2,3))
     pvl_mae = np.abs(orig_pvl-rec_pvl)
     pvl_mae = pvl_mae.mean(axis=(0,2,3))
 
+    print('CHECKPOINT: Fine comparazione connettività')
+
     pc = PhaseComparison()
-    pc_mae = pc.work(orig, rec)
+    pc_mae = pc.work(origis, recs)
+
+    print('CECKPOINT: Fine comparazione di fase')
 
     if graphs:
         assert orig_pcc.shape[0] == 1 and rec_pcc.shape[0] == 1, "solo un campione per fare i grafici"
@@ -250,7 +305,7 @@ def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, 
         rec_pcc = rec_pcc[0]
 
         for j,data in enumerate([orig_pcc, orig_pvl]):
-            j='orig' if j==0 else j='rec'
+            j='orig' if j==0 else 'rec'
             fig, axis = plt.subplot(1, 5, figsize=(4*5,3))
             v_min = data.min
             v_max = data.max
