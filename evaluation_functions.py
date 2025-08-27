@@ -31,7 +31,7 @@ def pearson_index(x, y, dim=-1):
             print('vary = 0')
             return np.inf
 
-        r = (mxy - mx * my) / torch.sqrt(varx*vary)
+        r = (mxy - mx * my) / np.sqrt(varx*vary)
         return r 
 
 def NRMSE(x,y):
@@ -47,11 +47,11 @@ def NRMSE(x,y):
 
 class PhaseComparison():
     def __init__(self):
-        self.BANDS =  [("delta", (1.0, 4.0)),
-                  ("theta", (4.0, 8.0)),
-                  ("alpha", (8.0, 13.0)),
-                  ("low_beta", (13, 20)),
-                  ("high_beta", (20, 30.0))]
+        self.BANDS = {"delta": (1.0, 4.0),
+                      "theta": (4.0, 8.0),
+                      "alpha": (8.0, 13.0),
+                      "low_beta": (13, 20),
+                      "high_beta": (20, 30.0)}
     
     def compare_mo_wa_ps(self, orig, rec, l_freq=1, h_freq=30, fs=250):
         """
@@ -59,21 +59,23 @@ class PhaseComparison():
         OUTPUT: dizionario con l'errore medio per banda della differenza di fase
         """
         assert isinstance(orig, np.ndarray) and isinstance(rec, np.ndarray), 'input deve essere numpy array'
-        #creo la lista delle scale per trovare le frequenze
-        scales = np.arange(fs/2/h_freq, fs/2/l_freq, 1)
+        #creo la lista delle scale per trovare le frequenze e uso una scala logaritmi per lo spacing
+        freqs = np.logspace(np.log10(l_freq), np.log10(h_freq), num=60)
+        fc = pywt.central_frequency('cmor1.5-1.0')
+        scales = fc / (freqs * 1/fs)
         #calcolo le trasformate wavelet morlet
-        coeff_orig, freq = pywt.cwt(orig, wavelet='cmor', scales=scales, sampling_period=1/fs)
-        coeff_rec, freq = pywt.cwt(rec, wavelet='cmor', scales=scales, sampling_period=1/fs)
+        coeff_orig, freq = pywt.cwt(orig, wavelet='cmor1.5-1.0', scales=scales, sampling_period=1/fs)
+        coeff_rec, freq = pywt.cwt(rec, wavelet='cmor1.5-1.0', scales=scales, sampling_period=1/fs)
         #calcolo le fasi
         orig_phase, rec_phase = np.angle(coeff_orig), np.angle(coeff_rec)
 
         #calcolo la media della differenza di fase per banda
-        res = {}
+        res = []
         for k,v in self.BANDS.items():
             #prendo le frequenze corrispondenti alla banda
             pick_index = np.logical_and(freq<=v[1], freq>v[0])
             #calcolo l'errore medio
-            res[k] = [np.abs((orig_phase[pick_index])-rec_phase[pick_index])]
+            res.append(np.mean(np.abs((orig_phase[pick_index])-rec_phase[pick_index])))
         return res
     
     def work(self, orig, rec):
@@ -81,24 +83,23 @@ class PhaseComparison():
         INPUT: lista di segnali EEG
         OUTPUT: Dataframe contenente l'errore medio di fase per banda
         """
-        #orig,rec hanno forma [N, ch_num, band_num, temp_len]
+        #orig,rec hanno forma [ch_num, band_num, temp_len]
         orig = [o.sum(axis=1) for o in orig]
         rec = [r.sum(axis=1) for r in rec]
         res = []
         #per ogni coppia di valori calcolo la media per canale
-        for o,r in zip(orig, rec):
+        print('CHECKPOINT: comparazione di fase')
+        for o,r in tqdm(zip(orig, rec)):
             #o,r hanno forma [ch_num, temp_len]
             ch_res = []
             for ch_o, ch_r in zip(o,r):
                 #ch_o,ch-r hanno forma [temp_len]
-                temp_res = self.compare_mo_wa_ps(ch_o.reshape(-1),ch_r.reshape(-1))
-                ch_res.append(list(temp_res.values()))
+                ch_res.append(self.compare_mo_wa_ps(ch_o.reshape(-1),ch_r.reshape(-1)))
             #calcolo poi l'errore medio tra i canali per banda
-            ch_res = np.stack(ch_res, axis=1)
-            ch_res = np.mean(ch_res,axis=1)
-        res.append(ch_res)
+            ch_res = np.mean(ch_res,axis=0)
+            res.append(ch_res)
         #calcolo poi la media tra le coppie per banda
-        return pd.DataFrame(dict(zip(list(self.BANDS.keys()),np.mean(np.stack(res, axis=1), axis=1).tolist()))).to_numpy()
+        return pd.DataFrame({'BANDA':list(self.BANDS.keys()), 'PMAE':np.mean(res, axis=0)}).to_numpy()
 
 
 class ConComparison():
@@ -194,7 +195,8 @@ class ConComparison():
         orig_pcc = []
         rec_pvl = []
         rec_pcc = []
-        for o, r in zip(orig, rec):
+        print('CHECKPOINT: comparazione connettività')
+        for o,r in tqdm(zip(orig, rec)):
             #o,r hanno forma [ch_num, band_num, temp_len]
             band_o_pcc = []
             band_o_pvl = []
