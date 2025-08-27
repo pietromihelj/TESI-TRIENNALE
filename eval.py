@@ -60,7 +60,7 @@ print('pc_mae=',pc_maes)
 print('pearson_mae=', pearson_maes)
 print('nrmse_mae=', nrmse_maes)
 
-values = [np.array([pcc_con_maes]), pvl_maes[0], np.array([pc_maes])]
+values = [np.array([pcc_con_maes]), pvl_maes[0], [pc_maes][0]]
 values_names = ['Correlation Mean Absolute Error', 'PVL Mean Absolute Error', 'Phase Mean Absolute Error']
 y_labs = ['Correlation MAE', 'PVL MAE', 'Phase MAE[rad]']
 
