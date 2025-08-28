@@ -3,6 +3,10 @@ import matplotlib.pylab as plt
 import evaluation_functions as ef
 import numpy as np
 import os
+import warnings
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 
 def parse_list_of_lists(flat_list, separator):
     result = []
@@ -60,7 +64,7 @@ print('pc_mae=',pc_maes)
 print('pearson_mae=', pearson_maes)
 print('nrmse_mae=', nrmse_maes)
 
-values = [np.array([pcc_con_maes]), pvl_maes[0], [pc_maes][0]]
+values = [np.array([pcc_con_maes]), pvl_maes[0], np.array([v[1] for v in pc_mae[0]], dtype=float)]
 values_names = ['Correlation Mean Absolute Error', 'PVL Mean Absolute Error', 'Phase Mean Absolute Error']
 y_labs = ['Correlation MAE', 'PVL MAE', 'Phase MAE[rad]']
 
@@ -85,7 +89,7 @@ for j in range(3):
 
 y_labs = ['Pearson correlation', 'NRMSE']
 titles = ['Pearson correlation Coefficient', 'NRMSE']
-fig1, axes1 = plt.subplot(1,2, figsize=(3*2, 3))
+fig1, axes1 = plt.subplots(1,2, figsize=(3*2, 3))
 for i in range(2):
     ax = axes[i]
     x = np.arange(len(models))

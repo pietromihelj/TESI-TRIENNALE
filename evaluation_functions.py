@@ -11,6 +11,7 @@ from deploy import get_orig_rec_latent, load_models
 from tqdm import tqdm
 
 STANDARD_1020 =  ['FP1', 'FP2', 'FZ', 'F3', 'F4', 'F7', 'F8', 'CZ', 'C3', 'C4', 'PZ', 'P3', 'P4', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
+ORIG_Phase = []
 
 def pearson_index(x, y, dim=-1):
         #calcolo manuale del coeff di correlazione di pearson lungo una specifica dimensione
@@ -46,14 +47,15 @@ def NRMSE(x,y):
     return nrmse
 
 class PhaseComparison():
-    def __init__(self):
+    def __init__(self, orig_num):
         self.BANDS = {"delta": (1.0, 4.0),
                       "theta": (4.0, 8.0),
                       "alpha": (8.0, 13.0),
                       "low_beta": (13, 20),
                       "high_beta": (20, 30.0)}
+        self.orig_num = orig_num
     
-    def compare_mo_wa_ps(self, orig, rec, l_freq=1, h_freq=30, fs=250):
+    def compare_mo_wa_ps(self, orig, rec, counter, l_freq=1, h_freq=30, fs=250):
         """
         INPUT: segnale e la sua ricostruzione monocanale [temp_len], come array numpy
         OUTPUT: dizionario con l'errore medio per banda della differenza di fase
@@ -64,10 +66,12 @@ class PhaseComparison():
         fc = pywt.central_frequency('cmor1.5-1.0')
         scales = fc / (freqs * 1/fs)
         #calcolo le trasformate wavelet morlet
-        coeff_orig, freq = pywt.cwt(orig, wavelet='cmor1.5-1.0', scales=scales, sampling_period=1/fs)
         coeff_rec, freq = pywt.cwt(rec, wavelet='cmor1.5-1.0', scales=scales, sampling_period=1/fs)
-        #calcolo le fasi
-        orig_phase, rec_phase = np.angle(coeff_orig), np.angle(coeff_rec)
+        rec_phase = np.angle(coeff_rec)
+        if len(ORIG_Phase) != self.orig_num:
+            coeff_orig, freq = pywt.cwt(orig, wavelet='cmor1.5-1.0', scales=scales, sampling_period=1/fs)
+            orig_phase = np.angle(coeff_orig)
+            ORIG_Phase.append(orig_phase)
 
         #calcolo la media della differenza di fase per banda
         res = []
@@ -75,7 +79,7 @@ class PhaseComparison():
             #prendo le frequenze corrispondenti alla banda
             pick_index = np.logical_and(freq<=v[1], freq>v[0])
             #calcolo l'errore medio
-            res.append(np.mean(np.abs((orig_phase[pick_index])-rec_phase[pick_index])))
+            res.append(np.mean(np.abs((ORIG_Phase[counter][pick_index])-rec_phase[pick_index])))
         return res
     
     def work(self, orig, rec):
@@ -89,15 +93,17 @@ class PhaseComparison():
         res = []
         #per ogni coppia di valori calcolo la media per canale
         print('CHECKPOINT: comparazione di fase')
+        counter = 0
         for o,r in tqdm(zip(orig, rec)):
             #o,r hanno forma [ch_num, temp_len]
             ch_res = []
             for ch_o, ch_r in zip(o,r):
                 #ch_o,ch-r hanno forma [temp_len]
-                ch_res.append(self.compare_mo_wa_ps(ch_o.reshape(-1),ch_r.reshape(-1)))
+                ch_res.append(self.compare_mo_wa_ps(ch_o.reshape(-1),ch_r.reshape(-1), counter=counter))
             #calcolo poi l'errore medio tra i canali per banda
             ch_res = np.mean(ch_res,axis=0)
             res.append(ch_res)
+            counter += 1
         #calcolo poi la media tra le coppie per banda
         return pd.DataFrame({'BANDA':list(self.BANDS.keys()), 'PMAE':np.mean(res, axis=0)}).to_numpy()
 
@@ -296,7 +302,7 @@ def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, 
 
     print('CHECKPOINT: Fine comparazione connettività')
 
-    pc = PhaseComparison()
+    pc = PhaseComparison(orig_num=len(origis))
     pc_mae = pc.work(origis, recs)
 
     print('CECKPOINT: Fine comparazione di fase')
