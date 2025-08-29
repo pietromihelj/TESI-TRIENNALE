@@ -58,13 +58,10 @@ for model, files,params in zip(models, model_save_files, param_list):
     pearson_maes.append(pearson_mae)
     nrmse_maes.append(nrmse_mae)
 
-print('pcc_con_mae=',pcc_con_maes)
-print('pvl_maes=', pvl_maes)
-print('pc_mae=',pc_maes)
-print('pearson_mae=', pearson_maes)
-print('nrmse_mae=', nrmse_maes)
+print(pc_maes)
 
-values = [np.array([pcc_con_maes]), pvl_maes[0], np.array([v[1] for v in pc_mae[0]], dtype=float)]
+
+values = [np.array([pcc_con_maes]), pvl_maes[0], np.array([v[1] for v in pc_maes[0]], dtype=float)]
 values_names = ['Correlation Mean Absolute Error', 'PVL Mean Absolute Error', 'Phase Mean Absolute Error']
 y_labs = ['Correlation MAE', 'PVL MAE', 'Phase MAE[rad]']
 
@@ -76,9 +73,9 @@ for j in range(3):
     width = 0.15
     
     for i in range(len(models)):
-        plt.bar(x+i*width, vals[:,i], width, label=models[i])
-    
-    plt.xticks(x + 2*width, Bands)  # centratura delle bande
+        plt.bar(x[i]+i*width, vals[:,i], width, label=models[i], linewidth=1, hatch='')
+        
+    plt.xticks(x[j] + (len(models)-1)/2*width, Bands)  # centratura delle bande
     plt.ylabel(y_labs[j])
     plt.title(values_names[j])
     plt.legend()

@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import os
 from deploy import get_orig_rec_latent, load_models
 from tqdm import tqdm
+import mne
 
 STANDARD_1020 =  ['FP1', 'FP2', 'FZ', 'F3', 'F4', 'F7', 'F8', 'CZ', 'C3', 'C4', 'PZ', 'P3', 'P4', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
 ORIG_Phase = []
@@ -44,7 +45,7 @@ def NRMSE(x,y):
     if mean_x == 0:
         return np.inf
     nrmse = rmse / mean_x
-    return nrmse
+    return np.abs(nrmse)
 
 class PhaseComparison():
     def __init__(self, orig_num):
@@ -68,7 +69,7 @@ class PhaseComparison():
         #calcolo le trasformate wavelet morlet
         coeff_rec, freq = pywt.cwt(rec, wavelet='cmor1.5-1.0', scales=scales, sampling_period=1/fs)
         rec_phase = np.angle(coeff_rec)
-        if len(ORIG_Phase) != self.orig_num:
+        if len(ORIG_Phase) != counter:
             coeff_orig, freq = pywt.cwt(orig, wavelet='cmor1.5-1.0', scales=scales, sampling_period=1/fs)
             orig_phase = np.angle(coeff_orig)
             ORIG_Phase.append(orig_phase)
@@ -79,7 +80,7 @@ class PhaseComparison():
             #prendo le frequenze corrispondenti alla banda
             pick_index = np.logical_and(freq<=v[1], freq>v[0])
             #calcolo l'errore medio
-            res.append(np.mean(np.abs((ORIG_Phase[counter][pick_index])-rec_phase[pick_index])))
+            res.append(np.mean(np.abs((ORIG_Phase[counter-1][pick_index])-rec_phase[pick_index])))
         return res
     
     def work(self, orig, rec):
@@ -88,24 +89,34 @@ class PhaseComparison():
         OUTPUT: Dataframe contenente l'errore medio di fase per banda
         """
         #orig,rec hanno forma [ch_num, band_num, temp_len]
-        orig = [o.sum(axis=1) for o in orig]
-        rec = [r.sum(axis=1) for r in rec]
+        orig_bands = []
+        rec_bands = []
+        for _, (lf, hf) in self.BANDS:
+            o_band = []
+            r_band = []
+            for o,r in zip(orig, rec):
+                o_band.append(mne.filter.filter_data(o, 250, l_freq=lf, h_freq=hf, filter_length='auto', fir_design='firwin',verbose=False).astype(np.float32))
+                r_band.append(mne.filter.filter_data(r, 250, l_freq=lf, h_freq=hf, filter_length='auto', fir_design='firwin',verbose=False).astype(np.float32))
+
+            orig_bands.append(o_band)
+            rec_bands.append(r_band)
+
         res = []
         #per ogni coppia di valori calcolo la media per canale
         print('CHECKPOINT: comparazione di fase')
-        counter = 0
-        for o,r in tqdm(zip(orig, rec)):
-            #o,r hanno forma [ch_num, temp_len]
-            ch_res = []
-            for ch_o, ch_r in zip(o,r):
-                #ch_o,ch-r hanno forma [temp_len]
-                ch_res.append(self.compare_mo_wa_ps(ch_o.reshape(-1),ch_r.reshape(-1), counter=counter))
-            #calcolo poi l'errore medio tra i canali per banda
-            ch_res = np.mean(ch_res,axis=0)
-            res.append(ch_res)
-            counter += 1
+        counter = 1
+        for o_band, r_band in zip(orig_bands, rec_bands):
+            band_res = []
+            for o,r in tqdm(zip(o_band, r_band)):
+                ch_res = []
+                for ch_o, ch_r in zip(o,r):
+                    ch_res.append(self.compare_mo_wa_ps(ch_o.reshape(-1), ch_r.reshape(-1), counter=counter))
+                np.mean(ch_res, axis=0)
+                band_res.append(ch_res)
+                counter = counter + 1
+            res.append(band_res)
         #calcolo poi la media tra le coppie per banda
-        return pd.DataFrame({'BANDA':list(self.BANDS.keys()), 'PMAE':np.mean(res, axis=0)}).to_numpy()
+        return np.array(band_res)
 
 
 class ConComparison():
@@ -285,6 +296,7 @@ def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, 
         raw = np.array(raw, np.float64)
         raw = raw[:,cuts[0]:cuts[1]]
         orig, rec, _ = get_orig_rec_latent(raw, model)
+        print(orig.shape,rec.shape)
         origis.append(orig)
         recs.append(rec)
         if j == 2:
