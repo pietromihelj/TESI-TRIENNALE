@@ -237,7 +237,7 @@ def evaluate(data_dir, model, model_files, params, cuts, f_extensions=['.edf']):
     model = load_models(model, model_files, params)
     origis = []
     recs = []
-    for j,path in enumerate(path_list):
+    for path in path_list:
         raw = utils.get_raw(path, preload=True)
         check_channel_names(raw_obj=raw, verbose=False)
         raw = raw.get_data()
@@ -246,8 +246,6 @@ def evaluate(data_dir, model, model_files, params, cuts, f_extensions=['.edf']):
         orig, rec, _ = get_orig_rec_latent(raw, model)
         origis.append(orig)
         recs.append(rec)
-        if j == 2:
-            break
     print('CHECKPOINT: Fine calcolo originali e ricostruzioni')
     
     cc = ConComparison()
