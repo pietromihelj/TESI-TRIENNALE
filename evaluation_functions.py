@@ -1,49 +1,21 @@
-import torch
 import numpy as np
-import pandas as pd
 import pywt
 from scipy.fftpack import next_fast_len
 from scipy.signal import hilbert
 import utils
-import matplotlib.pyplot as plt
-import os
 from deploy import get_orig_rec_latent, load_models
 from tqdm import tqdm
-import mne
+from scipy.stats import pearsonr
+from sklearn.metrics import root_mean_squared_error
 
 STANDARD_1020 =  ['FP1', 'FP2', 'FZ', 'F3', 'F4', 'F7', 'F8', 'CZ', 'C3', 'C4', 'PZ', 'P3', 'P4', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
-ORIG_Phase = []
-
-def pearson_index(x, y, dim=-1):
-        #calcolo manuale del coeff di correlazione di pearson lungo una specifica dimensione
-        xy = x * y
-        xx = x * x
-        yy = y * y
-
-        mx = x.mean(dim)
-        my = y.mean(dim)
-        mxy = xy.mean(dim)
-        mxx = xx.mean(dim)
-        myy = yy.mean(dim)
-
-        varx = mxx - mx ** 2
-        vary = myy - my ** 2
-
-        if vary==0:
-            print('vary = 0')
-            return np.inf
-
-        r = (mxy - mx * my) / np.sqrt(varx*vary)
-        return r 
 
 def NRMSE(x,y):
     #calcolo manuale dell'nmsre
-    squared_error = (x - y) ** 2
-    mse = np.mean(squared_error)
-    rmse = np.sqrt(mse)
     mean_x = np.mean(x)
     if mean_x == 0:
         return np.inf
+    rmse = root_mean_squared_error( x, y)
     nrmse = rmse / mean_x
     return np.abs(nrmse)
 
@@ -56,7 +28,7 @@ class PhaseComparison():
                       "high_beta": (20, 30.0)}
         self.orig_num = orig_num
     
-    def compare_mo_wa_ps(self, orig, rec, counter, l_freq=1, h_freq=30, fs=250):
+    def compare_mo_wa_ps(self, orig, rec, count, length, l_freq=1, h_freq=30, fs=250):
         """
         INPUT: segnale e la sua ricostruzione monocanale [temp_len], come array numpy
         OUTPUT: dizionario con l'errore medio per banda della differenza di fase
@@ -69,19 +41,11 @@ class PhaseComparison():
         #calcolo le trasformate wavelet morlet
         coeff_rec, freq = pywt.cwt(rec, wavelet='cmor1.5-1.0', scales=scales, sampling_period=1/fs)
         rec_phase = np.angle(coeff_rec)
-        if len(ORIG_Phase) != counter:
-            coeff_orig, freq = pywt.cwt(orig, wavelet='cmor1.5-1.0', scales=scales, sampling_period=1/fs)
-            orig_phase = np.angle(coeff_orig)
-            ORIG_Phase.append(orig_phase)
+        coeff_orig, freq = pywt.cwt(orig, wavelet='cmor1.5-1.0', scales=scales, sampling_period=1/fs)
+        orig_phase = np.angle(coeff_orig)
 
         #calcolo la media della differenza di fase per banda
-        res = []
-        for k,v in self.BANDS.items():
-            #prendo le frequenze corrispondenti alla banda
-            pick_index = np.logical_and(freq<=v[1], freq>v[0])
-            #calcolo l'errore medio
-            res.append(np.mean(np.abs((ORIG_Phase[counter-1][pick_index])-rec_phase[pick_index])))
-        return res
+        return np.mean(np.abs(orig_phase-rec_phase))
     
     def work(self, orig, rec):
         """
@@ -89,34 +53,18 @@ class PhaseComparison():
         OUTPUT: Dataframe contenente l'errore medio di fase per banda
         """
         #orig,rec hanno forma [ch_num, band_num, temp_len]
-        orig_bands = []
-        rec_bands = []
-        for _, (lf, hf) in self.BANDS:
-            o_band = []
-            r_band = []
-            for o,r in zip(orig, rec):
-                o_band.append(mne.filter.filter_data(o, 250, l_freq=lf, h_freq=hf, filter_length='auto', fir_design='firwin',verbose=False).astype(np.float32))
-                r_band.append(mne.filter.filter_data(r, 250, l_freq=lf, h_freq=hf, filter_length='auto', fir_design='firwin',verbose=False).astype(np.float32))
-
-            orig_bands.append(o_band)
-            rec_bands.append(r_band)
-
         res = []
         #per ogni coppia di valori calcolo la media per canale
         print('CHECKPOINT: comparazione di fase')
-        counter = 1
-        for o_band, r_band in zip(orig_bands, rec_bands):
-            band_res = []
-            for o,r in tqdm(zip(o_band, r_band)):
-                ch_res = []
-                for ch_o, ch_r in zip(o,r):
-                    ch_res.append(self.compare_mo_wa_ps(ch_o.reshape(-1), ch_r.reshape(-1), counter=counter))
-                np.mean(ch_res, axis=0)
-                band_res.append(ch_res)
-                counter = counter + 1
-            res.append(band_res)
+        counter = 0
+        for o,r in tqdm(zip(orig, rec)):
+            ch_res = []
+            for ch_o, ch_r in zip(o,r):
+                ch_res.append(self.compare_mo_wa_ps(ch_o.reshape(-1), ch_r.reshape(-1), count=counter, length=len(orig)))
+            np.mean(ch_res, axis=0)
+            res.append(ch_res)
         #calcolo poi la media tra le coppie per banda
-        return np.array(band_res)
+        return np.mean(res) 
 
 
 class ConComparison():
@@ -276,7 +224,7 @@ def check_channel_names(raw_obj, verbose):
         else:
             raise RuntimeError("Channel Error")
 
-def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, f_extensions=['.edf']):
+def evaluate(data_dir, model, model_files, params, cuts, f_extensions=['.edf']):
     """
     INPUT: dove trovare i dati e dove trovare i modelli
     Ricavo una lista di campioni lunghi tot
@@ -296,13 +244,11 @@ def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, 
         raw = np.array(raw, np.float64)
         raw = raw[:,cuts[0]:cuts[1]]
         orig, rec, _ = get_orig_rec_latent(raw, model)
-        print(orig.shape,rec.shape)
         origis.append(orig)
         recs.append(rec)
         if j == 2:
             break
     print('CHECKPOINT: Fine calcolo originali e ricostruzioni')
-    
     
     cc = ConComparison()
     orig_pcc, orig_pvl, rec_pcc, rec_pvl = cc.work(origis, recs)
@@ -319,35 +265,11 @@ def evaluate(data_dir, model, model_files, params, out_dir, cuts, graphs=False, 
 
     print('CECKPOINT: Fine comparazione di fase')
 
-    if graphs:
-        assert orig_pcc.shape[0] == 1 and rec_pcc.shape[0] == 1, "solo un campione per fare i grafici"
-        orig_pcc = orig_pcc[0]
-        rec_pcc = rec_pcc[0]
-
-        for j,data in enumerate([orig_pcc, orig_pvl]):
-            j='orig' if j==0 else 'rec'
-            fig, axis = plt.subplot(1, 5, figsize=(4*5,3))
-            v_min = data.min
-            v_max = data.max
-            for i in range(5):
-                ax = axis[i]
-                im = ax.imshow(data[i], champ='coolwarm', origin='upper', vmin=v_min, vmax=v_max)
-                ax.set_title(f'Banda {Bands[i]}')
-                ax.set_xticks(np.arange(len(STANDARD_1020)))
-                ax.set_xticklabels(STANDARD_1020, rotation=90)
-                ax.set_yticks(np.arange(len(STANDARD_1020)))
-                ax.set_yticklabels(STANDARD_1020)
-            cbar_ax = fig.add_axes([0.92, 0.15, 0.01, 0.7])
-            fig.colorbar(im, cax=cbar_ax, )
-            fig.supxlabel('Channels')
-            fig.supylabel('Channels')
-            path = os.path.join(out_dir,f'Rec_eval/heatmap{j}.png')
-            plt.savefig(path)
-
     pears_is = []
     nrmse_s = []
     for o,r in zip(orig, rec):
-        pears_is.append(pearson_index(o,r))
-        nrmse_s.append(NRMSE(o,r))
+        print(o.shape,r.shape)
+        pears_is.append(pearsonr(o.flatten(),r.flatten()))
+        nrmse_s.append(NRMSE(o.flatten(),r.flatten()))
         
-    return pcc_mae, pvl_mae, pc_mae, np.mean(np.array(pears_is)), np.mean(np.array(nrmse_s))
+    return pcc_mae[0], pvl_mae[0], pc_mae, np.mean(np.array(pears_is)), np.mean(np.array(nrmse_s))

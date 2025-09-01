@@ -4,6 +4,7 @@ import evaluation_functions as ef
 import numpy as np
 import os
 import warnings
+import pandas as pd
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -39,8 +40,6 @@ param_list = parse_list_of_lists(opts.params, ',')
 out_dir = opts.out_dir
 cuts = opts.cuts
 
-Bands = ['delta','theta', 'alpha', 'low_beta', 'high_beta']
-
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
 
@@ -51,53 +50,43 @@ pearson_maes = []
 nrmse_maes = []
 
 for model, files,params in zip(models, model_save_files, param_list):
-    pcc_con_mae, pvl_mae, pc_mae, pearson_mae, nrmse_mae = ef.evaluate(data_dir=data_dir, model=model, model_files=files,params=params, out_dir=out_dir, cuts=cuts, graphs=False)
+    print(f'EVALUATION DEL MODELLO: {model}')
+    pcc_con_mae, pvl_mae, pc_mae, pearson_mae, nrmse_mae = ef.evaluate(data_dir=data_dir, model=model, model_files=files,params=params, cuts=cuts)
     pcc_con_maes.append(pcc_con_mae)
     pvl_maes.append(pvl_mae)
     pc_maes.append(pc_mae)
     pearson_maes.append(pearson_mae)
     nrmse_maes.append(nrmse_mae)
 
-print(pc_maes)
+print('pcc_con_mae: ',pcc_con_maes)
+print('pvl_mae', pvl_maes)
+print('pc_maes: ',pc_maes)
+print('pearson_maes: ', pearson_maes)
+print('nrmse_mae: ', nrmse_maes)
 
+values = [pearson_maes, nrmse_maes, pc_maes, pcc_con_maes, pvl_maes]
+titles = ['Pearson CC', 'NRMSE', 'Phase Mean Absolute Error', 'Correlation Mean Absolute Error', 'PVL Mean Absolute Error']
+y_lab = ['PCC', 'NRMSE', 'Phase MAE', 'Correlation MAE', 'PVL MAE']
 
-values = [np.array([pcc_con_maes]), pvl_maes[0], np.array([v[1] for v in pc_maes[0]], dtype=float)]
-values_names = ['Correlation Mean Absolute Error', 'PVL Mean Absolute Error', 'Phase Mean Absolute Error']
-y_labs = ['Correlation MAE', 'PVL MAE', 'Phase MAE[rad]']
+df = pd.DataFrame(values, index = y_lab, columns=['metrics']+models)
+save_path = os.path.join(out_dir, f'metrics_saves_{models}.csv')
+df.to_csv(save_path)
 
-fig, axes = plt.subplots(1,3,figsize=(6*3,3))
-for j in range(3):
-    ax = axes[j]
-    vals = values[j].T
-    x = np.arange(len(Bands))
-    width = 0.15
-    
-    for i in range(len(models)):
-        plt.bar(x[i]+i*width, vals[:,i], width, label=models[i], linewidth=1, hatch='')
-        
-    plt.xticks(x[j] + (len(models)-1)/2*width, Bands)  # centratura delle bande
-    plt.ylabel(y_labs[j])
-    plt.title(values_names[j])
-    plt.legend()
-    plt.tight_layout()
-    path = os.path.join(out_dir,f'{y_labs[j]}.png')
-    plt.savefig(path)
-    plt.show()
+fig, axs = plt.subplots(3, 2, figsize=(12, 10))
+axs = axs.flatten()
 
-y_labs = ['Pearson correlation', 'NRMSE']
-titles = ['Pearson correlation Coefficient', 'NRMSE']
-fig1, axes1 = plt.subplots(1,2, figsize=(3*2, 3))
-for i in range(2):
-    ax = axes[i]
-    x = np.arange(len(models))
+x = np.arange(len(models))
 
-    plt.bar(x, pearson_maes, width)
+for j, (vals, ax) in enumerate(zip(values, axs)):
+    ax.bar(x, vals, color='skyblue')
+    ax.set_xticks(x)
+    ax.set_xticklabels(models)
+    ax.set_ylabel(y_lab[j])
+    ax.set_title(titles[j])
+    for i, v in enumerate(vals):
+        ax.text(i, v, f"{v:.2f}", ha='center', va='bottom', fontsize=9)
 
-    plt.xticks(models)
-    plt.ylabel(y_labs[i])
-    plt.title(titles[i])
-    plt.legend()
-    plt.tight_layout()
-    path = os.path.join(out_dir, f'{y_labs[i]}.png')
-    plt.savefig(path)
-    plt.show()
+fig.delaxes(axs[-1])
+plt.tight_layout()
+plt.savefig(out_dir)
+plt.show()
