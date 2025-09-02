@@ -45,7 +45,7 @@ class PhaseComparison():
         orig_phase = np.angle(coeff_orig)
 
         #calcolo la media della differenza di fase per banda
-        return np.mean(np.abs(orig_phase-rec_phase))
+        return np.mean(np.abs(np.angle(np.exp(1j*(orig_phase - rec_phase)))))
     
     def work(self, orig, rec):
         """
@@ -61,7 +61,7 @@ class PhaseComparison():
             ch_res = []
             for ch_o, ch_r in zip(o,r):
                 ch_res.append(self.compare_mo_wa_ps(ch_o.reshape(-1), ch_r.reshape(-1), count=counter, length=len(orig)))
-            np.mean(ch_res, axis=0)
+            ch_res = np.mean(ch_res, axis=0)
             res.append(ch_res)
         #calcolo poi la media tra le coppie per banda
         return np.mean(res) 
@@ -269,5 +269,11 @@ def evaluate(data_dir, model, model_files, params, cuts, f_extensions=['.edf']):
         print(o.shape,r.shape)
         pears_is.append(pearsonr(o.flatten(),r.flatten()))
         nrmse_s.append(NRMSE(o.flatten(),r.flatten()))
-        
-    return pcc_mae[0], pvl_mae[0], pc_mae, np.mean(np.array(pears_is)), np.mean(np.array(nrmse_s))
+    
+    print('CHECKPOINT: Inizio calcolo ampiezza media')
+    ch_ampl = [[],[]]
+    for o,r in zip(orig, rec):
+        ch_ampl[0].append(np.mean(np.abs(o),axis=1))
+        ch_ampl[1].append(np.mean(np.abs(r), axis=1))
+    
+    return pcc_mae[0], pvl_mae[0], pc_mae, np.mean(np.array(pears_is)), np.mean(np.array(nrmse_s)), np.mean(np.stack(ch_ampl[0]), axis=0), np.mean(np.stack(ch_ampl[1], axis=0))

@@ -71,8 +71,151 @@ print('#########################################################################
 print('Counter dei canali: ', chs)
 """
 
+"""
 import mne
 import numpy as np
 eeg = mne.io.read_raw_edf("D:/nmt_scalp_eeg_dataset/normal/eval/0000024.edf")
 print(len(eeg.info['ch_names']))
 print(eeg.get_data().shape[1]/250/60)
+"""
+
+"""
+import matplotlib.pyplot as plt
+import mne
+import numpy as np
+
+# Lista canali
+ch_names = ['Fp1', 'Fp2', 'Fz', 'F3', 'F4', 'F7', 'F8', 
+            'Cz', 'C3', 'C4', 'Pz', 'P3', 'P4', 
+            'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
+
+n_channels = len(ch_names)
+
+# Valori casuali per i barplot (esempio: 5 dataset)
+np.random.seed(42)
+values_list = [np.random.rand(n_channels) for _ in range(5)]
+models = [f"Model {i+1}" for i in range(n_channels)]
+y_lab = [f"Y {i+1}" for i in range(5)]
+titles = [f"Barplot {i+1}" for i in range(5)]
+
+# Valori per la topomap (un array di dimensione n_channels)
+topo_values = np.random.randn(n_channels)
+
+# Creo l'info MNE
+info = mne.create_info(ch_names=ch_names, sfreq=250, ch_types='eeg')
+montage = mne.channels.make_standard_montage("standard_1020")
+info.set_montage(montage)
+
+# Creo Evoked fittizio per la topomap
+evoked = mne.EvokedArray(topo_values[:, np.newaxis], info)
+
+# Creo figure con 6 subplot (5 barplot + 1 topomap)
+fig, axs = plt.subplots(3, 2, figsize=(14, 10))
+axs = axs.flatten()
+
+x = np.arange(len(models))
+
+# 5 grafici a barre
+for j, (vals, ax) in enumerate(zip(values_list, axs[:-1])):  # lascia ultimo per topomap
+    ax.bar(x, vals, color='skyblue')
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=90)
+    ax.set_ylabel(y_lab[j])
+    ax.set_title(titles[j])
+    for i, v in enumerate(vals):
+        ax.text(i, v, f"{v:.2f}", ha='center', va='bottom', fontsize=8)
+
+# Ultimo subplot: topomap
+mne.viz.plot_topomap(evoked.data[:, 0], evoked.info, axes=axs[-1], show=False,
+                     cmap="RdBu_r", contours=0)
+axs[-1].set_title("Topomap")
+
+plt.tight_layout()
+plt.show()
+"""
+"""
+import numpy as np
+import mne
+import matplotlib.pyplot as plt
+
+# Lista canali
+ch_names = ['Fp1', 'Fp2', 'Fz', 'F3', 'F4', 'F7', 'F8', 
+            'Cz', 'C3', 'C4', 'Pz', 'P3', 'P4', 
+            'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
+
+n_channels = len(ch_names)
+
+# Valori casuali per la topomap
+values = np.random.randn(n_channels)
+
+# Creo info e montage
+info = mne.create_info(ch_names=ch_names, sfreq=250, ch_types='eeg')
+montage = mne.channels.make_standard_montage("standard_1020")
+info.set_montage(montage)
+
+# Creo Evoked fittizio
+evoked = mne.EvokedArray(values[:, np.newaxis], info)
+
+# Creo figure
+fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+
+# Topomap senza contorni
+mne.viz.plot_topomap(evoked.data[:, 0], evoked.info, axes=axs[0], show=False,
+                     cmap="RdBu_r", contours=0)
+axs[0].set_title("contours=0 (nessuna linea)")
+
+# Topomap con 6 contorni
+mne.viz.plot_topomap(evoked.data[:, 0], evoked.info, axes=axs[1], show=False,
+                     cmap="RdBu_r", contours=6)
+axs[1].set_title("contours=6 (default)")
+
+plt.tight_layout()
+plt.show()
+"""
+
+import numpy as np
+import mne
+import matplotlib.pyplot as plt
+import matplotlib
+
+# Lista canali
+ch_names = ['Fp1', 'Fp2', 'Fz', 'F3', 'F4', 'F7', 'F8',
+            'Cz', 'C3', 'C4', 'Pz', 'P3', 'P4',
+            'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
+
+n_channels = len(ch_names)
+
+# Valori casuali per la topomap
+values = np.random.randn(n_channels)
+
+# Creo info e assegno il montage standard
+info = mne.create_info(ch_names=ch_names, sfreq=250, ch_types='eeg')
+montage = mne.channels.make_standard_montage("standard_1020")
+info.set_montage(montage)
+
+# Creo Evoked fittizio
+evoked = mne.EvokedArray(values[:, np.newaxis], info)
+
+# Creo figura
+fig, ax = plt.subplots(figsize=(6,6))
+
+# Topomap con puntini grandi e colore solo all’interno della testa
+im, cn = mne.viz.plot_topomap(evoked.data[:, 0], evoked.info,
+                              axes=ax,
+                              show=False,
+                              cmap='jet',
+                              contours=6,
+                              sensors=True)
+
+# Individuo solo i punti degli elettrodi e aumento la dimensione
+for coll in ax.collections:
+    if isinstance(coll, matplotlib.collections.PathCollection):  # solo scatter
+        coll.set_sizes([10])  # aumenta la dimensione dei marker
+        coll.set_facecolor('k')            # colore pieno (nero)
+        coll.set_edgecolor('k')            # bordo nero
+        coll.set_alpha(1.0) 
+
+
+ax.set_title("Topomap EEG con puntini grandi", fontsize=14)
+fig.colorbar(im, ax=ax, orientation='vertical', fraction=0.05, pad=0.05, label='Ampiezza[uV]', format="%.1f")
+plt.show()

@@ -5,6 +5,9 @@ import numpy as np
 import os
 import warnings
 import pandas as pd
+from scipy.stats import ttest_rel
+import mne
+import matplotlib
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -51,7 +54,8 @@ nrmse_maes = []
 
 for model, files,params in zip(models, model_save_files, param_list):
     print(f'EVALUATION DEL MODELLO: {model}')
-    pcc_con_mae, pvl_mae, pc_mae, pearson_mae, nrmse_mae = ef.evaluate(data_dir=data_dir, model=model, model_files=files,params=params, cuts=cuts)
+    pcc_con_mae, pvl_mae, pc_mae, pearson_mae, nrmse_mae, or_ampl, rec_ampl = ef.evaluate(data_dir=data_dir, model=model, model_files=files,params=params, cuts=cuts)
+    t, p = ttest_rel(or_ampl,rec_ampl)
     pcc_con_maes.append(pcc_con_mae)
     pvl_maes.append(pvl_mae)
     pc_maes.append(pc_mae)
@@ -64,19 +68,49 @@ print('pc_maes: ',pc_maes)
 print('pearson_maes: ', pearson_maes)
 print('nrmse_mae: ', nrmse_maes)
 
+
 values = [pearson_maes, nrmse_maes, pc_maes, pcc_con_maes, pvl_maes]
 titles = ['Pearson CC', 'NRMSE', 'Phase Mean Absolute Error', 'Correlation Mean Absolute Error', 'PVL Mean Absolute Error']
 y_lab = ['PCC', 'NRMSE', 'Phase MAE', 'Correlation MAE', 'PVL MAE']
 
-df = pd.DataFrame(values, index = y_lab, columns=['metrics']+models)
+df = pd.DataFrame(values+[t,p], index = y_lab['Mean Amplitude Difference', 'p-value'], columns=['metrics'])
 save_path = os.path.join(out_dir, f'metrics_saves_{models}.csv')
 df.to_csv(save_path)
 
-fig, axs = plt.subplots(3, 2, figsize=(12, 10))
+ch_names = ['Fp1', 'Fp2', 'Fz', 'F3', 'F4', 'F7', 'F8', 'Cz', 'C3', 'C4', 'Pz', 'P3', 'P4', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
+info = mne.create_info(ch_names=ch_names, sfreq=250, ch_types='eeg')
+montage = mne.channels.make_standard_montage("standard_1020")
+info.set_montage(montage)
+evoked_orig = mne.EvokedArray(or_ampl[:, np.newaxis], info)
+evoked_rec = mne.EvokedArray(rec_ampl[:,np.newaxis], info)
+
+fig_map ,axes = plt.subplots(1,2, figsize=(3,6))
+im_o, cn_o = mne.viz.plot_topomap(evoked_orig.data[:, 0], evoked_orig.info,axes=axes[0],show=False,cmap='jet',contours=6,sensors=True)
+im_r, cn_r = mne.viz.plot_topomap(evoked_rec.data[:, 0], evoked_rec.info,axes=axes[1],show=False,cmap='jet',contours=6,sensors=True)
+for coll in axes[0].collections:
+    print(type(coll))
+    if isinstance(coll, matplotlib.collections.PathCollection):  # solo scatter
+        coll.set_sizes([10])  # aumenta la dimensione dei marker
+        coll.set_facecolor('k')            # colore pieno (nero)
+        coll.set_edgecolor('k')            # bordo nero
+        coll.set_alpha(1.0)
+for coll in axes[1].collections:
+    print(type(coll))
+    if isinstance(coll, matplotlib.collections.PathCollection):  # solo scatter
+        coll.set_sizes([10])  # aumenta la dimensione dei marker
+        coll.set_facecolor('k')            # colore pieno (nero)
+        coll.set_edgecolor('k')            # bordo nero
+        coll.set_alpha(1.0)
+axes[0].set_title('Ampiezza media originale')
+axes[1].set_title('Ampiezza media ricostruzioni')
+fig_map.colorbar(im_o, ax=axes, orientation='vertical', fraction=0.05, pad=0.05, label='Ampiezza', format='%.1f')
+plt.savefig(os.path.join(out_dir, 'amplitude_comparison.png'), dpi=400)
+plt.show()
+
+
+fig, axs = plt.subplots(2, 3, figsize=(12, 10))
 axs = axs.flatten()
-
 x = np.arange(len(models))
-
 for j, (vals, ax) in enumerate(zip(values, axs)):
     ax.bar(x, vals, color='skyblue')
     ax.set_xticks(x)
@@ -85,8 +119,6 @@ for j, (vals, ax) in enumerate(zip(values, axs)):
     ax.set_title(titles[j])
     for i, v in enumerate(vals):
         ax.text(i, v, f"{v:.2f}", ha='center', va='bottom', fontsize=9)
-
-fig.delaxes(axs[-1])
 plt.tight_layout()
-plt.savefig(out_dir)
+plt.savefig(os.path.join(out_dir, 'metrics_comparison.png'), dpi=400)
 plt.show()
