@@ -140,7 +140,7 @@ class DeployBaseline():
 
 def get_orig_rec_latent(raw, model):
     """
-    INPUT: lista di segnali EEG numpy
+    INPUT: segnale EEG numpy
     OUTPUT: numpy array originale = [ch_num, band_num, temp_len], ricostruzione = [ch_num, band_num, temp_len], latente dim [ch_num, clip_num ,50]
     """
     assert isinstance(raw, np.ndarray), 'input deve essere una array numpy'

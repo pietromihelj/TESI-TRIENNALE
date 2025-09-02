@@ -172,7 +172,7 @@ axs[1].set_title("contours=6 (default)")
 plt.tight_layout()
 plt.show()
 """
-
+"""
 import numpy as np
 import mne
 import matplotlib.pyplot as plt
@@ -219,3 +219,42 @@ for coll in ax.collections:
 ax.set_title("Topomap EEG con puntini grandi", fontsize=14)
 fig.colorbar(im, ax=ax, orientation='vertical', fraction=0.05, pad=0.05, label='Ampiezza[uV]', format="%.1f")
 plt.show()
+"""
+
+"""
+from utils import get_path_list
+import pandas as pd
+from collections import Counter
+import os
+import matplotlib.pyplot as plt
+
+path = get_path_list("D:/nmt_scalp_eeg_dataset", f_extensions=['.edf'], sub_d=True)
+print(len(path))
+
+age_df = pd.read_csv("D:/nmt_scalp_eeg_dataset/Labels.csv")
+ages = []
+for p in path:
+    code = os.path.basename(p)
+    ages.append(age_df.loc[age_df['recordname'] == code, 'age'].iloc[0])
+ages = dict(Counter(ages))
+ages = dict(sorted(ages.items()))  
+
+
+df = pd.DataFrame.from_dict(ages, orient='index', columns=['count'])
+df.plot(kind='bar', legend=False)
+
+plt.xlabel("Età")
+plt.ylabel("Frequenza")
+plt.show()
+"""
+
+from deploy import get_orig_rec_latent, DeployBaseline
+from utils import check_channel_names, get_raw
+import mne
+eeg = get_raw("D:/nmt_scalp_eeg_dataset/abnormal/eval/0000036.edf")
+check_channel_names(raw_obj=eeg, verbose=False)
+eeg = eeg.get_data()
+model = DeployBaseline("C:/Users/Pietro/Desktop/TESI/TESI-TRIENNALE/models/PCA_whole.pkl")
+_,_,lat = get_orig_rec_latent(eeg, model)
+
+print(lat.shape)

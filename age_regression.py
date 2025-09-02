@@ -4,7 +4,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import  mean_absolute_error, r2_score
 from deploy import load_models, get_orig_rec_latent
 from scipy.stats import pearsonr
-import utils as u
+from utils import get_path_list, get_raw, stride_data, check_channel_names
 import numpy as np
 import pandas as pd
 import os
@@ -16,24 +16,19 @@ model_names = []
 model_paths = []
 params = []
 
-#carico i path dei dati da rivedere con il nuovo dataset
-paths_list = u.get_path_list(d_path=d_path, f_extensions=['.edf'])
-df = pd.read_csv('nchsdb-dataset-0.3.0.csv')
-
-#carico i dati raw e creo l'array delle età. da rivedere con nuovo dataset
-raws = []
+"""
+Nella successiva parte di codice carico i dati e creo 2 liste contenenti la coppia eeg eta soggetto
+"""
+path = get_path_list("D:/nmt_scalp_eeg_dataset", f_extensions=['.edf'], sub_d=True)
+age_df = pd.read_csv("D:/nmt_scalp_eeg_dataset/Labels.csv")
 ages = []
-for path in paths_list:
-    raw = u.get_raw(path)
-    raw.pick_channels(channels)
-    channels = raw.info['ch_names']
-    raw = raw.get_data()
-    raw = np.array(raw, np.float64)
-    raw = raw[:,cuts[0]:cuts[1]]
-    file_id = os.path.splitext(os.path.basename(path))[0]
-    raws.append(raw)
-    ages.append(int(df.loc[df['filename_id'] == file_id, 'age_at_sleep_study_days'].iloc[0]/365))
-ages = np.array(ages)
+raws = []
+for p in path:
+    raw = get_raw(p)
+    check_channel_names(raw_obj=raw, verbose=False)
+    raws.append(raw.get_data())
+    code = os.path.basename(p)
+    ages.append(age_df.loc[age_df['recordname'] == code, 'age'].iloc[0])
 
 #inizzializzo i predittori di test
 predictors = [
@@ -57,7 +52,7 @@ for model_name, model_file, param in zip(model_names,model_paths, params):
     #prendo le var latent
     model=load_models(model_name, model_file, param)
     _,_,latent = get_orig_rec_latent(raws, model)
-    latent = u.stride_data(latent, n_per_seg=50, n_overlap = 0)
+    latent = stride_data(latent, n_per_seg=50, n_overlap = 0)
     #latent ha forma [N, ch_num, clip_num, 50]
     latent = latent.reshape(latent.shape[0], latent.shape[2], -1)
     #partial res conterra i risultati per il modello

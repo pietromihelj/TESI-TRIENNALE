@@ -89,7 +89,7 @@ def get_raw(f_path, preload=False):
     check_type('f_path', f_path, [str])
     if os.path.isdir(f_path):
         raise KeyError('can`t identify %s.'%f_path)
-    return mne.io.read_raw_edf(f_path, preload= preload,verbose='WARNING')
+    return mne.io.read_raw_edf(f_path, preload= preload,verbose=False)
 
 def find_artefacts_1d(mask, a_th=0):
     #controllo dei tipi in input
@@ -213,3 +213,43 @@ def stride_data(x, n_per_seg, n_overlap):
         strides = x.strides[:-1]+(step*x.strides[-1], x.strides[-1])
         result = np.lib.stride_tricks.as_strided(x, shape=shape, strides=strides)
     return result
+
+def check_channel_names(raw_obj, verbose):
+        ch_map = ["EEG FP1-REF", "EEG FP1-LE", "EEG FP1", "FP1",
+        "EEG FP2-REF", "EEG FP2-LE", "EEG FP2", "FP2",
+        "EEG F3-REF", "EEG F3-LE", "EEG F3", "F3",
+        "EEG F4-REF", "EEG F4-LE", "EEG F4", "F4",
+        "EEG FZ-REF", "EEG FZ-LE", "EEG FZ", "FZ",
+        "EEG F7-REF", "EEG F7-LE", "EEG F7", "F7",
+        "EEG F8-REF", "EEG F8-LE", "EEG F8", "F8",
+        "EEG P3-REF", "EEG P3-LE", "EEG P3", "P3",
+        "EEG P4-REF", "EEG P4-LE", "EEG P4", "P4",
+        "EEG PZ-REF", "EEG PZ-LE", "EEG PZ", "PZ",
+        "EEG C3-REF", "EEG C3-LE", "EEG C3", "C3",
+        "EEG C4-REF", "EEG C4-LE", "EEG C4", "C4",
+        "EEG CZ-REF", "EEG CZ-LE", "EEG CZ", "CZ",
+        "EEG T3-REF", "EEG T3-LE", "EEG T3", "T3",
+        "EEG T4-REF", "EEG T4-LE", "EEG T4", "T4",
+        "EEG T5-REF", "EEG T5-LE", "EEG T5", "T5",
+        "EEG T6-REF", "EEG T6-LE", "EEG T6", "T6",
+        "EEG O1-REF", "EEG O1-LE", "EEG O1", "O1",
+        "EEG O2-REF", "EEG O2-LE", "EEG O2", "O2"]
+        ch_necessary = ['FP1', 'FP2', 'F3', 'F4', 'FZ', 'F7', 'F8', 'P3', 'P4', 'PZ', 'C3', 'C4', 'CZ', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
+        #mappa dei nomi dai possibili usati ad uno standard semplice
+        ch_mapper = {}
+        for i in range(0, len(ch_map), 4):
+            standard_name = ch_map[i + 3]
+            for j in range(4):
+                ch_mapper[ch_map[i + j]] = standard_name
+        
+        #rinomino i canali
+        existing_channels = set(raw_obj.info['ch_names'])
+        filtered_ch_mapper = {old: new for old, new in ch_mapper.items() if old in existing_channels}
+        raw_obj.rename_channels(filtered_ch_mapper)
+        ch_names = set(raw_obj.ch_names)
+
+        #controllo che tutti i nomi dei canali siano presenti
+        if set(ch_necessary).issubset(ch_names):
+            raw_obj.pick(ch_necessary)
+        else:
+            raise RuntimeError("Channel Error")
