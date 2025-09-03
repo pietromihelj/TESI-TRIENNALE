@@ -14,8 +14,8 @@ source /opt/spack/opt/spack/linux-rocky9-x86_64/gcc-13.2.0/miniconda3-22.11.1-tn
 cd /u/pmihelj/TESI-TRIENNALE
 
 python3 -u eval.py \
---data_dir \
---models \
---model_save_files\
---params \
---out_dir \
+--data_dir "/u/pmihelj/datsets/TUAB eval" \
+--models PCA FastICA FastICA FastICA FastICA FastICA FastICA \
+--model_save_files /u/pmihelj/models/PCA_whole.pkl /u/pmihelj/models/fast_ica/deflation/cube_FastICA_whole.pkl /u/pmihelj/models/fast_ica/deflation/exp_FastICA_whole.pkl /u/pmihelj/models/fast_ica/deflation/logcosh_FastICA_whole.pkl /u/pmihelj/models/fast_ica/parallel/cube_FastICA_whole.pkl /u/pmihelj/models/fast_ica/parallel/exp_FastICA_whole.pkl /u/pmihelj/models/fast_ica/parallel/logcosh_FastICA_whole.pkl \
+--params 1 1 1 1 1 1 1 \
+--out_dir /u/pmihelj/results\

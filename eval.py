@@ -52,9 +52,9 @@ pc_maes = []
 pearson_maes = []
 nrmse_maes = []
 
-for model, files,params in zip(models, model_save_files, param_list):
+for j,model, files,params in enumerate(zip(models, model_save_files, param_list)):
     print(f'EVALUATION DEL MODELLO: {model}')
-    pcc_con_mae, pvl_mae, pc_mae, pearson_mae, nrmse_mae, or_ampl, rec_ampl = ef.evaluate(data_dir=data_dir, model=model, model_files=files,params=params, cuts=cuts)
+    pcc_con_mae, pvl_mae, pc_mae, pearson_mae, nrmse_mae, or_ampl, rec_ampl = ef.evaluate(data_dir=data_dir, model=model + "_" + str(j), model_files=files,params=params, cuts=cuts)
     t, p = ttest_rel(or_ampl,rec_ampl)
     pcc_con_maes.append(pcc_con_mae)
     pvl_maes.append(pvl_mae)

@@ -206,8 +206,7 @@ def evaluate(data_dir, model, model_files, params, cuts, f_extensions=['.edf']):
         orig, rec, _ = get_orig_rec_latent(raw, model)
         origis.append(orig)
         recs.append(rec)
-        if j==1:
-            break
+
 
     print('CHECKPOINT: Fine calcolo originali e ricostruzioni')
     
