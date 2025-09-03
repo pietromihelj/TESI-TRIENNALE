@@ -3,7 +3,7 @@ import pywt
 from scipy.fftpack import next_fast_len
 from scipy.signal import hilbert
 import utils
-from deploy import get_orig_rec_latent, load_models,
+from deploy import get_orig_rec_latent, load_models
 from tqdm import tqdm
 from scipy.stats import pearsonr
 from sklearn.metrics import root_mean_squared_error
