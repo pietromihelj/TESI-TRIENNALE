@@ -73,7 +73,7 @@ values = [pearson_maes, nrmse_maes, pc_maes, pcc_con_maes, pvl_maes]
 titles = ['Pearson CC', 'NRMSE', 'Phase Mean Absolute Error', 'Correlation Mean Absolute Error', 'PVL Mean Absolute Error']
 y_lab = ['PCC', 'NRMSE', 'Phase MAE', 'Correlation MAE', 'PVL MAE']
 
-df = pd.DataFrame(values+[t,p], index = y_lab['Mean Amplitude Difference', 'p-value'], columns=['metrics'])
+df = pd.DataFrame({'metrics': values+[p,t]}, index = y_lab+['Mean Amplitude Difference', 'p-value'])
 save_path = os.path.join(out_dir, f'metrics_saves_{models}.csv')
 df.to_csv(save_path)
 

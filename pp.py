@@ -248,6 +248,7 @@ plt.ylabel("Frequenza")
 plt.show()
 """
 
+"""
 from deploy import get_orig_rec_latent, DeployBaseline
 from utils import check_channel_names, get_raw
 import mne
@@ -258,3 +259,9 @@ model = DeployBaseline("C:/Users/Pietro/Desktop/TESI/TESI-TRIENNALE/models/PCA_w
 _,_,lat = get_orig_rec_latent(eeg, model)
 
 print(lat.shape)
+"""
+import pandas as pd
+val = [1,2,3,4,5]
+lab = ['a','b','c','d','e']
+df = pd.DataFrame({'metrics': val}, index = lab)
+print(df)

@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.utils.data import Dataset,DataLoader
 
 def initialize_weights(model):
     for m in model.modules():
@@ -86,6 +87,6 @@ class SeizureDetect_Model(nn.Module):
         res = self.linear(x)
         return res 
     
-
-
-    
+class dataset_sezure(Dataset):
+    def __init__(self, model):
+        
