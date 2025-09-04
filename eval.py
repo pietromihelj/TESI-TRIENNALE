@@ -28,8 +28,9 @@ def parse_list_of_lists(flat_list, separator):
 
 parser = argparse.ArgumentParser(description='Evaluate Model')
 parser.add_argument('--data_dir', type=str, required=True, help='data_dir')
-parser.add_argument('--models', nargs='+',type=str, required=True, help='models')
-parser.add_argument('--model_save_files',nargs='+', type=str, required=True, help='models saves files')
+parser.add_argument('--models', type=str, nargs='+', required=True, help='models')
+parser.add_argument('--model_save_name', type=str, required=True, help='model_save_name')
+parser.add_argument('--model_save_files', nargs='+', type=str, required=True, help='models saves files')
 parser.add_argument('--params', nargs='+',type=int, required=False, help='params for models', default=[])
 parser.add_argument('--out_dir', type=str, required=True, help='out_dir')
 parser.add_argument('--cuts', nargs='+',type=int, required=False, help='cuts', default=[0,-1])
@@ -38,6 +39,7 @@ opts = parser.parse_args()
 
 data_dir = opts.data_dir
 models = opts.models
+model_save_name = opts.model_save_name
 model_save_files = opts.model_save_files
 param_list = parse_list_of_lists(opts.params, ',')
 out_dir = opts.out_dir
@@ -52,10 +54,11 @@ pc_maes = []
 pearson_maes = []
 nrmse_maes = []
 
-for j,model, files,params in enumerate(zip(models, model_save_files, param_list)):
+for j, (model, files,params) in enumerate(zip(models, model_save_files, param_list)):
     print(f'EVALUATION DEL MODELLO: {model}')
-    pcc_con_mae, pvl_mae, pc_mae, pearson_mae, nrmse_mae, or_ampl, rec_ampl = ef.evaluate(data_dir=data_dir, model=model + "_" + str(j), model_files=files,params=params, cuts=cuts)
+    pcc_con_mae, pvl_mae, pc_mae, pearson_mae, nrmse_mae, or_ampl, rec_ampl = ef.evaluate(data_dir=data_dir, model=model, model_files=files,params=params, cuts=cuts)
     t, p = ttest_rel(or_ampl,rec_ampl)
+    models[j] = model + '_' + str(j)
     pcc_con_maes.append(pcc_con_mae)
     pvl_maes.append(pvl_mae)
     pc_maes.append(pc_mae)
@@ -74,9 +77,10 @@ titles = ['Pearson CC', 'NRMSE', 'Phase Mean Absolute Error', 'Correlation Mean 
 y_lab = ['PCC', 'NRMSE', 'Phase MAE', 'Correlation MAE', 'PVL MAE']
 
 df = pd.DataFrame({'metrics': values+[p,t]}, index = y_lab+['Mean Amplitude Difference', 'p-value'])
-save_path = os.path.join(out_dir, f'metrics_saves_{models}.csv')
+save_path = os.path.join(out_dir, f'metrics_saves_{model_save_name}.csv')
 df.to_csv(save_path)
 
+"""
 ch_names = ['Fp1', 'Fp2', 'Fz', 'F3', 'F4', 'F7', 'F8', 'Cz', 'C3', 'C4', 'Pz', 'P3', 'P4', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
 info = mne.create_info(ch_names=ch_names, sfreq=250, ch_types='eeg')
 montage = mne.channels.make_standard_montage("standard_1020")
@@ -122,3 +126,4 @@ for j, (vals, ax) in enumerate(zip(values, axs)):
 plt.tight_layout()
 plt.savefig(os.path.join(out_dir, 'metrics_comparison.png'), dpi=400)
 plt.show()
+"""

@@ -28,7 +28,7 @@ class PhaseComparison():
                       "high_beta": (20, 30.0)}
         self.orig_num = orig_num
     
-    def compare_mo_wa_ps(self, orig, rec, count, length, l_freq=1, h_freq=30, fs=250):
+    def compare_mo_wa_ps(self, orig, rec, count, l_freq=1, h_freq=30, fs=250):
         """
         INPUT: segnale e la sua ricostruzione monocanale [temp_len], come array numpy
         OUTPUT: dizionario con l'errore medio per banda della differenza di fase
@@ -60,9 +60,10 @@ class PhaseComparison():
         for o,r in tqdm(zip(orig, rec)):
             ch_res = []
             for ch_o, ch_r in zip(o,r):
-                ch_res.append(self.compare_mo_wa_ps(ch_o.reshape(-1), ch_r.reshape(-1), count=counter, length=len(orig)))
+                ch_res.append(self.compare_mo_wa_ps(ch_o.reshape(-1), ch_r.reshape(-1), count=counter))
             ch_res = np.mean(ch_res, axis=0)
             res.append(ch_res)
+            counter = counter+1
         #calcolo poi la media tra le coppie per banda
         return np.mean(res) 
 
@@ -193,7 +194,7 @@ def evaluate(data_dir, model, model_files, params, cuts, f_extensions=['.edf']):
     OUTPUT: Grafici salvati come png delle matrici di correlazione della connettività e della fase
     """
 
-    path_list = utils.get_path_list(data_dir, f_extensions,False)
+    path_list = utils.get_path_list(data_dir, f_extensions,True)
     model = load_models(model, model_files, params)
     origis = []
     recs = []

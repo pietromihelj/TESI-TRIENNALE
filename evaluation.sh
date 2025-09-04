@@ -1,10 +1,10 @@
 #!/bin/bash
 #
 #SBATCH --job-name=VAEEG_training
-#SBATCH --partition=turing_wide
+#SBATCH --partition=turing-wide
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=32
+#SBATCH --cpus-per-task=64
 #SBATCH --mem=64GB
 #SBATCH --time=2-00:00:00
 #SBATCH --output=results/slurm-%j.out
@@ -14,8 +14,9 @@ source /opt/spack/opt/spack/linux-rocky9-x86_64/gcc-13.2.0/miniconda3-22.11.1-tn
 cd /u/pmihelj/TESI-TRIENNALE
 
 python3 -u eval.py \
---data_dir "/u/pmihelj/datsets/TUAB eval" \
---models PCA FastICA FastICA FastICA FastICA FastICA FastICA \
---model_save_files /u/pmihelj/models/PCA_whole.pkl /u/pmihelj/models/fast_ica/deflation/cube_FastICA_whole.pkl /u/pmihelj/models/fast_ica/deflation/exp_FastICA_whole.pkl /u/pmihelj/models/fast_ica/deflation/logcosh_FastICA_whole.pkl /u/pmihelj/models/fast_ica/parallel/cube_FastICA_whole.pkl /u/pmihelj/models/fast_ica/parallel/exp_FastICA_whole.pkl /u/pmihelj/models/fast_ica/parallel/logcosh_FastICA_whole.pkl \
---params 1 1 1 1 1 1 1 \
---out_dir /u/pmihelj/results\
+--data_dir "/u/pmihelj/datasets/TUAB_eval" \
+--models FastICA \
+--model_save_name FastICA_def_logcosh \
+--model_save_files  /u/pmihelj/models/fast_ica/deflation/logcosh_FastICA_whole.pkl \
+--params 1 \
+--out_dir /u/pmihelj/results 

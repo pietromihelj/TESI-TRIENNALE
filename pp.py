@@ -260,8 +260,7 @@ _,_,lat = get_orig_rec_latent(eeg, model)
 
 print(lat.shape)
 """
-import pandas as pd
-val = [1,2,3,4,5]
-lab = ['a','b','c','d','e']
-df = pd.DataFrame({'metrics': val}, index = lab)
-print(df)
+
+from utils import get_path_list
+
+print(len(get_path_list("D:/TUAB_eval", ['.edf'], True)))
