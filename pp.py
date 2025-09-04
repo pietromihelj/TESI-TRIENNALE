@@ -262,5 +262,56 @@ print(lat.shape)
 """
 
 from utils import get_path_list
+import pandas as pd
+import os
+import matplotlib.pyplot as plt
+import numpy as np
 
-print(len(get_path_list("D:/TUAB_eval", ['.edf'], True)))
+paths = get_path_list("D:/nmt_scalp_eeg_dataset", ['.edf'], True)
+for j,path in enumerate(paths):
+    paths[j] = os.path.basename(path)
+df = pd.read_csv("D:/nmt_scalp_eeg_dataset/Labels.csv")
+
+df = df.copy()
+df['age'] = df['age'].astype(int)
+df['gender'] = df['gender'].str.lower()
+
+# Indice completo di età (uno per anno)
+min_age = df['age'].min()
+max_age = df['age'].max()
+age_idx = pd.Index(np.arange(min_age, max_age + 1), name='age')
+
+# Conteggi per età e genere, riallineati all’indice completo
+counts = (df.groupby(['age', 'gender']).size()
+            .unstack('gender')
+            .reindex(age_idx, fill_value=0))
+
+m = counts.get('male', pd.Series(0, index=age_idx)).to_numpy()
+f = counts.get('female', pd.Series(0, index=age_idx)).to_numpy()
+
+y = age_idx.values  # posizioni Y = età
+
+fig, ax = plt.subplots(figsize=(8, max(4, len(age_idx)/6)))
+
+# Barre: maschi a sinistra (valori negativi), femmine a destra
+ax.barh(y, -m, align='center', label='Male')
+ax.barh(y,  f, align='center', label='Female')
+
+# Linea dello zero
+ax.axvline(0, linewidth=1)
+
+# Tick ogni 10 anni, allineati alle stesse posizioni Y
+ticks = np.arange((min_age//10)*10, (max_age//10 + 1)*10 + 1, 10)
+ax.set_yticks(ticks)
+ax.set_yticklabels([str(t) for t in ticks])
+
+# Limiti Y centrati sulle barre, così i tick cadono al centro
+ax.set_ylim(min_age - 0.5, max_age + 0.5)
+
+ax.set_xlabel('Count')
+ax.set_ylabel('Age')
+ax.legend()
+ax.grid(axis='x', linestyle=':', alpha=0.5)
+# ax.invert_yaxis()  # opzionale, per avere età crescenti verso il basso
+plt.tight_layout()
+plt.show()
