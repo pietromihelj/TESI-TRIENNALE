@@ -4,18 +4,28 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import  mean_absolute_error, r2_score
 from deploy import load_models, get_orig_rec_latent
 from scipy.stats import pearsonr
-from utils import get_path_list, get_raw, stride_data, check_channel_names
+from utils import get_path_list, get_raw, check_channel_names
 import numpy as np
 import pandas as pd
 import os
+import argparse
 
-d_path = []
-channels = []
-cuts = []
-model_names = []
-model_paths = []
-params = []
+parser = argparse.ArgumentParser(description='Age Regression')
+parser.add_argument('--model_names', nargs='+', type=str, required=True, help='model_names')
+parser.add_argument('--model_paths', nargs='+', type=str, required=True, help='model_paths')
+parser.add_argument('--params', nargs='+', type=list, required=False, help='params', default=[])
+parser.add_argument('--out_dir', type=str, required=True, help='out_dir')
 
+opts = parser.parse_args()
+
+model_names = opts.model_names
+model_paths = opts.model_paths
+
+params = opts.params
+out_dir = opts.out_dir
+
+if not os.path.exists(out_dir):
+    os.makedirs(out_dir)
 """
 Nella successiva parte di codice carico i dati e creo 2 liste contenenti la coppia eeg eta soggetto
 """
@@ -23,12 +33,17 @@ path = get_path_list("D:/nmt_scalp_eeg_dataset", f_extensions=['.edf'], sub_d=Tr
 age_df = pd.read_csv("D:/nmt_scalp_eeg_dataset/Labels.csv")
 ages = []
 raws = []
-for p in path:
+for j,p in enumerate(path):
     raw = get_raw(p)
     check_channel_names(raw_obj=raw, verbose=False)
     raws.append(raw.get_data())
     code = os.path.basename(p)
     ages.append(age_df.loc[age_df['recordname'] == code, 'age'].iloc[0])
+    if j==1:
+        break
+
+print('AGES: ', len(ages))
+print('RAWS: ', len(raws))
 
 #inizzializzo i predittori di test
 predictors = [
@@ -46,29 +61,45 @@ Considero una singola clip come campione. per ogni soggetto prendo come età la 
 """
 #itero su ogni modello di embedding
 for model_name, model_file, param in zip(model_names,model_paths, params):
+    print(f'entraro nel ciclo main per il modello {model_name}')
     #per ognungo creo la stratifiedkfold
     skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=10)
-    quantiles = pd.qcut(ages, q=5, labels=False)
     #prendo le var latent
     model=load_models(model_name, model_file, param)
-    _,_,latent = get_orig_rec_latent(raws, model)
-    latent = stride_data(latent, n_per_seg=50, n_overlap = 0)
-    #latent ha forma [N, ch_num, clip_num, 50]
-    latent = latent.reshape(latent.shape[0], latent.shape[2], -1)
-    #partial res conterra i risultati per il modello
+    latents = []
+    for j,raw in enumerate(raws):
+        _,_,latent = get_orig_rec_latent(raw, model)
+        latents.append(latent.reshape(-1,50))
+    print('Latenti create: ', len(latents), ' - ', latents[0].shape)
+    quantiles = pd.qcut(ages, q=5, labels=False)
     partial_res = []
     #per ogni predittore eseguo la k_fold
     for name,pred in predictors:
         par_mae = []
         par_r2 = []
-        for idx, (tr_idx, te_idx) in skf.split(latent, quantiles):
-            tr_X = latent[tr_idx]
-            te_X = latent[te_idx] 
+        for idx, (tr_idx, te_idx) in skf.split(latents, quantiles):
+            #tr_X contiene gli eeg interi ed ha forma [N, k, 50]
+            tr_X = latents[tr_idx]
+            te_X = latents[te_idx] 
             tr_Y = ages[tr_idx]
+            #creo una lista tr_Y che contiene le età associate ad ogni clip
+            tr_Y = np.concatenate([np.full(eeg.shape[0], ages[j])] for j, eeg in enumerate(tr_X))
+            #concateno infine le clip per ottenere una lista [N*k, 50] per usare le clip come dato 
+            tr_X = np.concatenate(tr_X, axis = 0)
+            #eeg_limits_idx è una lista contenente i cut da usare per ricostruire gli eeg durante il calcolo delle metriche
+            eeg_limits_idx = [0]
+            eeg_limits_idx = eeg_limits_idx + [eeg_limits_idx[j] + len(eeg) for j, eeg in enumerate(te_X)]
+            #concateno il test per avere anche cui la clip come dato base
+            te_X = np.concatenate(te_X)
+            #te_Y è solo l'età dell'eeg totale
             te_Y = ages[te_idx]
+            #fitto il modello
             pred.fit(tr_X, tr_Y)
+            #predico i valori per le clip degli eeg di test
             y_pred = pred.predict(te_X)
-            y_pred = np.mean(y_pred)
+            #ricostruisco la predizione del singolo eeg facendo la media delle età nel tempo
+            y_pred = [y_pred[eeg_limits_idx[i]:eeg_limits_idx[i+1]].mean() for i in range(len(eeg_limits_idx)-1)]
+            #calcolo le metriche sul risultato aggregato dell'eeg
             par_mae.append(mean_absolute_error(y_pred=y_pred, y_true=te_Y))
             par_r2.append(r2_score(y_pred=y_pred, y_true=te_Y))
         partial_res.append(((name+'_MAE', np.mean(par_mae)),(name+'_r2', np.mean(par_r2))))
@@ -85,7 +116,8 @@ for model_name, metrics_list in results.items():
         })
 
 df = pd.DataFrame(rows)
-df.to_csv('age_results.csv', index = False)
+path = os.path.join(out_dir,'age_results.csv')
+df.to_csv(path, index = False)
 
 """
 Nella successiva parte di codice calcolo il PCC tra le variabli latenti e le età.
@@ -105,5 +137,5 @@ for model_name, model_file, param in zip(model_names, model_paths, params):
         for l_var in range(latent_dim):
             pcc[ch,l_var] = pearsonr(latent[:, ch, l_var], ages)[0]
     
-    df = pd.DataFrame(pcc, index=channels, columns=[f"latent_{d}" for d in range(pcc.shape[1])])
+    df = pd.DataFrame(pcc, index=['FP1', 'FP2', 'F3', 'F4', 'FZ', 'F7', 'F8', 'P3', 'P4', 'PZ', 'C3', 'C4', 'CZ', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2'], columns=[f"latent_{d}" for d in range(pcc.shape[1])])
     df.to_csv(model_name+"_pearson_latent.csv", index=True)

@@ -261,6 +261,7 @@ _,_,lat = get_orig_rec_latent(eeg, model)
 print(lat.shape)
 """
 
+"""
 from utils import get_path_list
 import pandas as pd
 import os
@@ -315,3 +316,20 @@ ax.grid(axis='x', linestyle=':', alpha=0.5)
 # ax.invert_yaxis()  # opzionale, per avere età crescenti verso il basso
 plt.tight_layout()
 plt.show()
+"""
+
+from utils import get_raw, check_channel_names
+from deploy import get_orig_rec_latent, load_models
+import numpy as np
+
+eeg = get_raw("D:/nmt_scalp_eeg_dataset/normal/eval/0000024.edf")
+eeg1 = get_raw("D:/nmt_scalp_eeg_dataset/normal/eval/0000044.edf")
+check_channel_names(raw_obj=eeg, verbose=False)
+check_channel_names(raw_obj=eeg1, verbose=False)
+eeg = eeg.get_data()
+eeg1 = eeg1.get_data()
+model = load_models('PCA', "C:/Users/pitom/OneDrive/Desktop/materiale uni/Tesi/TESI-TRIENNALE/models/PCA_whole.pkl", [1])
+_,_,latent = get_orig_rec_latent(eeg, model)
+_,_,latent1 = get_orig_rec_latent(eeg1, model)
+latents = [latent.reshape(-1,50), latent1.reshape(-1,50)]
+print(latent1.reshape(-1,50).shape)

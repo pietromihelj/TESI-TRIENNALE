@@ -55,7 +55,7 @@ pearson_maes = []
 nrmse_maes = []
 
 for j, (model, files,params) in enumerate(zip(models, model_save_files, param_list)):
-    print(f'EVALUATION DEL MODELLO: {model}')
+    print(f'EVALUATION DEL MODELLO: {model_save_name}')
     pcc_con_mae, pvl_mae, pc_mae, pearson_mae, nrmse_mae, or_ampl, rec_ampl = ef.evaluate(data_dir=data_dir, model=model, model_files=files,params=params, cuts=cuts)
     t, p = ttest_rel(or_ampl,rec_ampl)
     models[j] = model + '_' + str(j)

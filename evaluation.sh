@@ -6,7 +6,6 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=64
 #SBATCH --mem=64GB
-#SBATCH --time=2-00:00:00
 #SBATCH --output=results/slurm-%j.out
 #SBATCH --error=results/slurm-%j.err
 
@@ -16,7 +15,7 @@ cd /u/pmihelj/TESI-TRIENNALE
 python3 -u eval.py \
 --data_dir "/u/pmihelj/datasets/TUAB_eval" \
 --models FastICA \
---model_save_name FastICA_def_logcosh \
---model_save_files  /u/pmihelj/models/fast_ica/deflation/logcosh_FastICA_whole.pkl \
+--model_save_name FastICA_par_logcosh \
+--model_save_files  /u/pmihelj/models/fast_ica/parallel/logcosh_FastICA_whole.pkl \
 --params 1 \
 --out_dir /u/pmihelj/results 
