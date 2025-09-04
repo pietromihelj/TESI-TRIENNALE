@@ -59,17 +59,19 @@ class DeployVAEEG():
         common_intervals = c_clean[0]
         for ch_intervals in c_clean[1:]:
             common_intervals = common_intervals & ch_intervals
-        valid_idx = np.concatenate([np.arange(interval.lower, interval.upper + 1) for interval in common_intervals])
-        clean_signal = signal[:,valid_idx]
-        out = []
-        #separo il segnale in 5 bande
-        for _, (lf, hf) in BANDS:
-            band = mne.filter.filter_data(clean_signal, 250, l_freq=lf, h_freq=hf, filter_length='auto', fir_design='firwin',verbose=False).astype(np.float32) 
-            #separo il segnale in clip lunghe 1 secondo
-            clips = stride_data(band, 250, 0)
-            out.append(clips)
-        #ritorno gli array delle bande uniti e riordino per avere [ch_num, clip_num, band_num, clip_len]
-        return torch.from_numpy(np.transpose(np.stack(out, axis=0), (1,2,0,3))).float()
+        if common_intervals:
+            valid_idx = np.concatenate([np.arange(interval.lower, interval.upper + 1) for interval in common_intervals])
+            clean_signal = signal[:,valid_idx]
+            out = []
+            #separo il segnale in 5 bande
+            for _, (lf, hf) in BANDS:
+                band = mne.filter.filter_data(clean_signal, 250, l_freq=lf, h_freq=hf, filter_length='auto', fir_design='firwin',verbose=False).astype(np.float32) 
+                #separo il segnale in clip lunghe 1 secondo
+                clips = stride_data(band, 250, 0)
+                out.append(clips)
+            #ritorno gli array delle bande uniti e riordino per avere [ch_num, clip_num, band_num, clip_len]
+            return torch.from_numpy(np.transpose(np.stack(out, axis=0), (1,2,0,3))).float()
+        return None
 
     def run(self, inputs):
         """
@@ -121,11 +123,13 @@ class DeployBaseline():
         common_intervals = c_clean[0]
         for ch_intervals in c_clean[1:]:
             common_intervals = common_intervals & ch_intervals
-        valid_idx = np.concatenate([np.arange(interval.lower, interval.upper + 1) for interval in common_intervals])
-        clean_signal = signal[:,valid_idx]
-        #separo in clip
-        clips = stride_data(clean_signal, 250,0)
-        return clips
+        if common_intervals:
+            valid_idx = np.concatenate([np.arange(interval.lower, interval.upper + 1) for interval in common_intervals])
+            clean_signal = signal[:,valid_idx]
+            #separo in clip
+            clips = stride_data(clean_signal, 250,0)
+            return clips
+        return None
 
     def run(self, inputs):
         """
@@ -147,6 +151,8 @@ def get_orig_rec_latent(raw, model):
     if isinstance(model, DeployVAEEG):
         orig = model.preprocess(signal=raw)
         #origin diventa una lista di forma [ch_num, clip_num, bands_num, clip_len]
+        if orig is None:
+            return None, None, None 
         ch_rec = []
         ch_latent = []
         #ogni canale ha forma [clip_num, bands_num, clip_len]
@@ -164,6 +170,8 @@ def get_orig_rec_latent(raw, model):
 
     if isinstance(model, DeployBaseline):
         orig = model.preprocess(signal=raw)
+        if orig is None:
+            return None, None, None
             #origis [N, ch_num, clup_num, clip_len]
         ch_rec = []
         ch_latent = []

@@ -1,1 +1,5 @@
-
+Embedding,Predictor,MAE,R2
+PCA_539,LinearRegression,0.0,1.0
+PCA_539,Lasso,0.0,1.0
+PCA_539,Ridge,0.0,1.0
+PCA_539,RandomForest,0.0,1.0

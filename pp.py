@@ -328,8 +328,10 @@ check_channel_names(raw_obj=eeg, verbose=False)
 check_channel_names(raw_obj=eeg1, verbose=False)
 eeg = eeg.get_data()
 eeg1 = eeg1.get_data()
-model = load_models('PCA', "C:/Users/pitom/OneDrive/Desktop/materiale uni/Tesi/TESI-TRIENNALE/models/PCA_whole.pkl", [1])
+model = load_models('PCA', "C:/Users/Pietro/Desktop/TESI/TESI-TRIENNALE/models/PCA_whole.pkl", [1])
 _,_,latent = get_orig_rec_latent(eeg, model)
 _,_,latent1 = get_orig_rec_latent(eeg1, model)
-latents = [latent.reshape(-1,50), latent1.reshape(-1,50)]
-print(latent1.reshape(-1,50).shape)
+print(latent1.shape)
+latents = np.concat([np.hstack([latent.reshape(-1,50), np.full((latent.reshape(-1,50).shape[0],1),0)]), np.hstack([latent1.reshape(-1,50), np.full((latent1.reshape(-1,50).shape[0],1),1)])], axis=0)
+print(latents.shape)
+
