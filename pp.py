@@ -336,9 +336,3 @@ print(latent1.shape)
 latents = np.concat([np.hstack([latent.reshape(-1,50), np.full((latent.reshape(-1,50).shape[0],1),0)]), np.hstack([latent1.reshape(-1,50), np.full((latent1.reshape(-1,50).shape[0],1),1)])], axis=0)
 print(latents.shape)
 """
-
-import numpy as np
- 
-c = np.zeros((3,5))
-c = np.hstack([c, np.full((c.shape[0],1),1)])
-print(c)

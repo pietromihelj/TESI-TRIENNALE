@@ -1,0 +1,5 @@
+high_beta: 514
+low_beta: 744
+theta: 911
+alpha: 825
+delta: 1082

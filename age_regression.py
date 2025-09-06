@@ -11,7 +11,7 @@ import os
 import argparse
 import warnings
 from sklearn.exceptions import ConvergenceWarning
-from collections import Counter
+from sklearn.preprocessing import StandardScaler
 
 
 with warnings.catch_warnings(record=True) as w:
@@ -36,8 +36,8 @@ if not os.path.exists(out_dir):
 """
 Nella successiva parte di codice carico i dati e creo 2 liste contenenti la coppia eeg eta soggetto
 """
-path = get_path_list("D:/nmt_scalp_eeg_dataset", f_extensions=['.edf'], sub_d=True)
-age_df = pd.read_csv("D:/nmt_scalp_eeg_dataset/Labels.csv")
+path = get_path_list("D:/nmt_scalp_age_dataset", f_extensions=['.edf'], sub_d=True)
+age_df = pd.read_csv("D:/nmt_scalp_age_dataset/Labels.csv")
 ages = []
 raws = []
 for p in path:
@@ -60,6 +60,7 @@ predictors = [
 ]
 
 results = {}
+scaler = StandardScaler()
 for q,(model_name, save_f, param) in enumerate(zip(model_names, model_paths, params)):
 
     print(f'Regressione con variabili del modello: {model_name}')
@@ -98,6 +99,7 @@ for q,(model_name, save_f, param) in enumerate(zip(model_names, model_paths, par
             te_Y = clip_ages[te_idx]
             te_sids = np.array([int(eeg[-1]) for eeg in latents[te_idx]])
             #alleno il modello
+            tr_x = scaler(tr_X)
             pred.fit(tr_X, tr_Y)
             for warn in w:
                 if issubclass(warn.category, ConvergenceWarning) and len(w) > w_len:
