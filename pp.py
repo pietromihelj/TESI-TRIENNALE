@@ -1,338 +1,257 @@
-"""
-from utils import get_path_list, get_raw
-from collections import Counter
-import numpy as np
-from tqdm import tqdm
-
-import matplotlib.pyplot as plt
-import numpy as np
-
-import matplotlib.pyplot as plt
-import numpy as np
-
-# Dati di esempio
-modelli = ['Mod1', 'Mod2', 'Mod3', 'Mod4', 'Mod5']
-bande = ['Banda1', 'Banda2', 'Banda3', 'Banda4', 'Banda5']
-
-# valori[modello][banda] -> trasponiamo per avere valori[banda][modello]
-valori = [
-    [5, 3, 4, 2, 1],
-    [2, 4, 5, 3, 2],
-    [3, 5, 2, 4, 3],
-    [4, 2, 3, 5, 4],
-    [1, 3, 4, 2, 5]
-]
-
-# Trasponiamo per avere liste per bande
-valori_per_banda = np.array(valori).T  # ora valori_per_banda[banda][modello]
-
-# Configurazione dell'istogramma
-x = np.arange(len(bande))
-width = 0.15
-
-for i in range(len(modelli)):
-    plt.bar(x + i*width, valori_per_banda[:, i], width, label=modelli[i])
-
-plt.xticks(x + 2*width, bande)  # centratura delle bande
-plt.ylabel("Valore")
-plt.xlabel("Bande")
-plt.title("Istogramma raggruppato per bande e modelli")
-plt.legend()
-plt.tight_layout()
-plt.show()
-"""
-"""
-path_list = get_path_list("D:/nchsdb/sleep_data", ['.edf'])
-print(len(path_list))
-
-lenght_h = []
-fs = []
-cha = []
-
-for path in tqdm(path_list):
-    raw = get_raw(path, preload=True)
-    fs.append(raw.info['sfreq'])
-    cha.append(raw.info['ch_names'])
-    eeg = raw.get_data()
-    lenght_h.append(eeg.shape[1]/int(fs[0])/60/60)
-    break
-
-freq = Counter(fs)
-chs = Counter(np.array(cha).flatten())
-lenght_h = np.array(lenght_h)
-max_len = np.max(lenght_h)
-min_len = np.min(lenght_h)
-mean_len = np.mean(lenght_h)
-
-print('counter delle frequenze',freq)
-print('##################################################################################################')
-print(f'Lunghezza media: {mean_len:.2f}   Lunghezza massima: {max_len:.2f}  Lunghezza minima: {min_len:.2f}')
-print('###################################################################################################')
-print('Counter dei canali: ', chs)
-"""
-
-"""
-import mne
-import numpy as np
-eeg = mne.io.read_raw_edf("D:/nmt_scalp_eeg_dataset/normal/eval/0000024.edf")
-print(len(eeg.info['ch_names']))
-print(eeg.get_data().shape[1]/250/60)
-"""
-
-"""
-import matplotlib.pyplot as plt
-import mne
-import numpy as np
-
-# Lista canali
-ch_names = ['Fp1', 'Fp2', 'Fz', 'F3', 'F4', 'F7', 'F8', 
-            'Cz', 'C3', 'C4', 'Pz', 'P3', 'P4', 
-            'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
-
-n_channels = len(ch_names)
-
-# Valori casuali per i barplot (esempio: 5 dataset)
-np.random.seed(42)
-values_list = [np.random.rand(n_channels) for _ in range(5)]
-models = [f"Model {i+1}" for i in range(n_channels)]
-y_lab = [f"Y {i+1}" for i in range(5)]
-titles = [f"Barplot {i+1}" for i in range(5)]
-
-# Valori per la topomap (un array di dimensione n_channels)
-topo_values = np.random.randn(n_channels)
-
-# Creo l'info MNE
-info = mne.create_info(ch_names=ch_names, sfreq=250, ch_types='eeg')
-montage = mne.channels.make_standard_montage("standard_1020")
-info.set_montage(montage)
-
-# Creo Evoked fittizio per la topomap
-evoked = mne.EvokedArray(topo_values[:, np.newaxis], info)
-
-# Creo figure con 6 subplot (5 barplot + 1 topomap)
-fig, axs = plt.subplots(3, 2, figsize=(14, 10))
-axs = axs.flatten()
-
-x = np.arange(len(models))
-
-# 5 grafici a barre
-for j, (vals, ax) in enumerate(zip(values_list, axs[:-1])):  # lascia ultimo per topomap
-    ax.bar(x, vals, color='skyblue')
-    ax.set_xticks(x)
-    ax.set_xticklabels(models, rotation=90)
-    ax.set_ylabel(y_lab[j])
-    ax.set_title(titles[j])
-    for i, v in enumerate(vals):
-        ax.text(i, v, f"{v:.2f}", ha='center', va='bottom', fontsize=8)
-
-# Ultimo subplot: topomap
-mne.viz.plot_topomap(evoked.data[:, 0], evoked.info, axes=axs[-1], show=False,
-                     cmap="RdBu_r", contours=0)
-axs[-1].set_title("Topomap")
-
-plt.tight_layout()
-plt.show()
-"""
-"""
-import numpy as np
-import mne
-import matplotlib.pyplot as plt
-
-# Lista canali
-ch_names = ['Fp1', 'Fp2', 'Fz', 'F3', 'F4', 'F7', 'F8', 
-            'Cz', 'C3', 'C4', 'Pz', 'P3', 'P4', 
-            'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
-
-n_channels = len(ch_names)
-
-# Valori casuali per la topomap
-values = np.random.randn(n_channels)
-
-# Creo info e montage
-info = mne.create_info(ch_names=ch_names, sfreq=250, ch_types='eeg')
-montage = mne.channels.make_standard_montage("standard_1020")
-info.set_montage(montage)
-
-# Creo Evoked fittizio
-evoked = mne.EvokedArray(values[:, np.newaxis], info)
-
-# Creo figure
-fig, axs = plt.subplots(1, 2, figsize=(10, 5))
-
-# Topomap senza contorni
-mne.viz.plot_topomap(evoked.data[:, 0], evoked.info, axes=axs[0], show=False,
-                     cmap="RdBu_r", contours=0)
-axs[0].set_title("contours=0 (nessuna linea)")
-
-# Topomap con 6 contorni
-mne.viz.plot_topomap(evoked.data[:, 0], evoked.info, axes=axs[1], show=False,
-                     cmap="RdBu_r", contours=6)
-axs[1].set_title("contours=6 (default)")
-
-plt.tight_layout()
-plt.show()
-"""
-"""
-import numpy as np
-import mne
-import matplotlib.pyplot as plt
-import matplotlib
-
-# Lista canali
-ch_names = ['Fp1', 'Fp2', 'Fz', 'F3', 'F4', 'F7', 'F8',
-            'Cz', 'C3', 'C4', 'Pz', 'P3', 'P4',
-            'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
-
-n_channels = len(ch_names)
-
-# Valori casuali per la topomap
-values = np.random.randn(n_channels)
-
-# Creo info e assegno il montage standard
-info = mne.create_info(ch_names=ch_names, sfreq=250, ch_types='eeg')
-montage = mne.channels.make_standard_montage("standard_1020")
-info.set_montage(montage)
-
-# Creo Evoked fittizio
-evoked = mne.EvokedArray(values[:, np.newaxis], info)
-
-# Creo figura
-fig, ax = plt.subplots(figsize=(6,6))
-
-# Topomap con puntini grandi e colore solo all’interno della testa
-im, cn = mne.viz.plot_topomap(evoked.data[:, 0], evoked.info,
-                              axes=ax,
-                              show=False,
-                              cmap='jet',
-                              contours=6,
-                              sensors=True)
-
-# Individuo solo i punti degli elettrodi e aumento la dimensione
-for coll in ax.collections:
-    if isinstance(coll, matplotlib.collections.PathCollection):  # solo scatter
-        coll.set_sizes([10])  # aumenta la dimensione dei marker
-        coll.set_facecolor('k')            # colore pieno (nero)
-        coll.set_edgecolor('k')            # bordo nero
-        coll.set_alpha(1.0) 
-
-
-ax.set_title("Topomap EEG con puntini grandi", fontsize=14)
-fig.colorbar(im, ax=ax, orientation='vertical', fraction=0.05, pad=0.05, label='Ampiezza[uV]', format="%.1f")
-plt.show()
-"""
-
-"""
-from utils import get_path_list
-import pandas as pd
-from collections import Counter
-import os
-import matplotlib.pyplot as plt
-
-path = get_path_list("D:/nmt_scalp_eeg_dataset", f_extensions=['.edf'], sub_d=True)
-print(len(path))
-
-age_df = pd.read_csv("D:/nmt_scalp_eeg_dataset/Labels.csv")
-ages = []
-for p in path:
-    code = os.path.basename(p)
-    ages.append(age_df.loc[age_df['recordname'] == code, 'age'].iloc[0])
-ages = dict(Counter(ages))
-ages = dict(sorted(ages.items()))  
-
-
-df = pd.DataFrame.from_dict(ages, orient='index', columns=['count'])
-df.plot(kind='bar', legend=False)
-
-plt.xlabel("Età")
-plt.ylabel("Frequenza")
-plt.show()
-"""
-
-"""
-from deploy import get_orig_rec_latent, DeployBaseline
-from utils import check_channel_names, get_raw
-import mne
-eeg = get_raw("D:/nmt_scalp_eeg_dataset/abnormal/eval/0000036.edf")
-check_channel_names(raw_obj=eeg, verbose=False)
-eeg = eeg.get_data()
-model = DeployBaseline("C:/Users/Pietro/Desktop/TESI/TESI-TRIENNALE/models/PCA_whole.pkl")
-_,_,lat = get_orig_rec_latent(eeg, model)
-
-print(lat.shape)
-"""
-
-"""
 from utils import get_path_list
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-paths = get_path_list("D:/nmt_scalp_eeg_dataset", ['.edf'], True)
-for j,path in enumerate(paths):
-    paths[j] = os.path.basename(path)
-df = pd.read_csv("D:/nmt_scalp_eeg_dataset/Labels.csv")
+"""
+Grafico piramide delle età per il dataset della age regression
 
-df = df.copy()
-df['age'] = df['age'].astype(int)
-df['gender'] = df['gender'].str.lower()
+df = pd.read_csv("D:/nmt_scalp_age_dataset/Labels.csv")
+paths = get_path_list('D:/nmt_scalp_age_dataset', f_extensions=['.edf'], sub_d=True)
 
-# Indice completo di età (uno per anno)
-min_age = df['age'].min()
-max_age = df['age'].max()
-age_idx = pd.Index(np.arange(min_age, max_age + 1), name='age')
+file_names = []
+for path in paths:
+    file_names.append(os.path.basename(path))
 
-# Conteggi per età e genere, riallineati all’indice completo
-counts = (df.groupby(['age', 'gender']).size()
-            .unstack('gender')
-            .reindex(age_idx, fill_value=0))
+df = df[df["recordname"].isin(file_names)]
+df = df[df["gender"].isin(["male","female"])]
+print('Numero di eeg: ', len(file_names))
 
-m = counts.get('male', pd.Series(0, index=age_idx)).to_numpy()
-f = counts.get('female', pd.Series(0, index=age_idx)).to_numpy()
 
-y = age_idx.values  # posizioni Y = età
+bins = np.arange(0, 91, 1)
+df["age_group"] = pd.cut(df["age"], bins=bins, right=False)
 
-fig, ax = plt.subplots(figsize=(8, max(4, len(age_idx)/6)))
+# conteggio per fascia e genere
+counts = df.groupby(["age_group", "gender", "label"]).size().unstack(fill_value=0)
+counts.columns = counts.columns.str.lower()
+counts_reset = counts.reset_index()
 
-# Barre: maschi a sinistra (valori negativi), femmine a destra
-ax.barh(y, -m, align='center', label='Male')
-ax.barh(y,  f, align='center', label='Female')
+# Separiamo maschi e femmine
+male = counts_reset[counts_reset['gender'] == 'male']
+female = counts_reset[counts_reset['gender'] == 'female']
 
-# Linea dello zero
-ax.axvline(0, linewidth=1)
+# Creiamo etichette combinate
+labels = male['age_group'].astype(str)  # o female['age_group'], sono uguali
 
-# Tick ogni 10 anni, allineati alle stesse posizioni Y
-ticks = np.arange((min_age//10)*10, (max_age//10 + 1)*10 + 1, 10)
-ax.set_yticks(ticks)
-ax.set_yticklabels([str(t) for t in ticks])
+fig, ax = plt.subplots(figsize=(10, 8))
 
-# Limiti Y centrati sulle barre, così i tick cadono al centro
-ax.set_ylim(min_age - 0.5, max_age + 0.5)
+# Barre divergenti (negativi per male)
+ax.barh(labels, -male['normal'], color="#7f80e6", alpha=0.8, label='Male normal (24.6%, N=85)')
+ax.barh(labels, -male['abnormal'], color="#99d9d4",alpha = 0.8, label='Male abnormal (75.4%, N=260)')
+ax.barh(labels, female['normal'], color="#bc8485", alpha=0.8, label='Female normal (20.5%, N=40)')
+ax.barh(labels, female['abnormal'], color='#f7beb8', alpha=0.8, label='Female abnormal (79.5%, N=155)')
 
+
+ax.grid(True, axis='both', linestyle='--', linewidth=0.7, color='lightgray', alpha=0.8)
+
+ax.set_yticks(np.arange(0,91,10))
+ax.set_yticklabels(['0','10', '20', '30', '40', '50','60', '70', '80','90'])
+ax.set_xticks(np.arange(-20,21,5))
+ax.set_xticklabels(['20','15','10','5','0','5','10','15','20'])
 ax.set_xlabel('Count')
-ax.set_ylabel('Age')
-ax.legend()
-ax.grid(axis='x', linestyle=':', alpha=0.5)
-# ax.invert_yaxis()  # opzionale, per avere età crescenti verso il basso
-plt.tight_layout()
+ax.set_ylabel('Age (years)')
+ax.set_title('male (63.9%, N=345)              female(36.1%, N=195)')
+ax.legend(loc='upper left', frameon=False)
+ax.set_ylim(0, 90)
 plt.show()
+
+ages = df['age']
+print(np.mean(ages))
+print(np.sqrt(np.var(ages)))
 """
 
+
+
 """
-from utils import get_raw, check_channel_names
-from deploy import get_orig_rec_latent, load_models
+Funzione per la monopolarizzazione dei canali
+
 import numpy as np
+import mne
 
-eeg = get_raw("D:/nmt_scalp_eeg_dataset/normal/eval/0000024.edf")
-eeg1 = get_raw("D:/nmt_scalp_eeg_dataset/normal/eval/0000044.edf")
-check_channel_names(raw_obj=eeg, verbose=False)
-check_channel_names(raw_obj=eeg1, verbose=False)
-eeg = eeg.get_data()
-eeg1 = eeg1.get_data()
-model = load_models('PCA', "C:/Users/Pietro/Desktop/TESI/TESI-TRIENNALE/models/PCA_whole.pkl", [1])
-_,_,latent = get_orig_rec_latent(eeg, model)
-_,_,latent1 = get_orig_rec_latent(eeg1, model)
-print(latent1.shape)
-latents = np.concat([np.hstack([latent.reshape(-1,50), np.full((latent.reshape(-1,50).shape[0],1),0)]), np.hstack([latent1.reshape(-1,50), np.full((latent1.reshape(-1,50).shape[0],1),1)])], axis=0)
-print(latents.shape)
+def bipolar_to_monopolar(data_bipolar, bipolar_ch_names, sfreq=256):
+
+    # Troviamo tutti i nomi di elettrodi presenti nei bipolari
+    electrodes = set()
+    for ch in bipolar_ch_names:
+        electrodes.update(ch.split('-'))
+    electrodes = sorted(list(electrodes))
+
+    n_samples = data_bipolar.shape[1]
+    n_elec = len(electrodes)
+
+    # Costruisco matrice A (n_bipolar x n_monopolar) e vettore y (bipolar)
+    A = np.zeros((len(bipolar_ch_names), n_elec))
+    for i, ch in enumerate(bipolar_ch_names):
+        e1, e2 = ch.split('-')
+        idx1 = electrodes.index(e1)
+        idx2 = electrodes.index(e2)
+        A[i, idx1] = 1
+        A[i, idx2] = -1
+
+    # Risolvo il sistema lineare con minimo quadrati
+    X_monopolar = np.linalg.lstsq(A, data_bipolar, rcond=None)[0]
+
+    # Creo info MNE
+    info = mne.create_info(ch_names=electrodes, sfreq=sfreq, ch_types='eeg')
+
+    # Creo RawArray
+    raw = mne.io.RawArray(X_monopolar, info)
+
+    # Applico riferimento medio
+    raw.set_eeg_reference('average', projection=False)
+    
+    return raw
+
+# Esempio di utilizzo
+bipolar_ch_names = ['FP1-F7', 'F7-T7', 'T7-P7', 'P7-O1',
+                     'FP1-F3', 'F3-C3', 'C3-P3', 'P3-O1',
+                     'FP2-F4', 'F4-C4', 'C4-P4', 'P4-O2',
+                     'FP2-F8', 'F8-T8', 'T8-P8', 'P8-O2',
+                     'FZ-CZ', 'CZ-PZ', 'P7-T7', 'T7-FT9',
+                     'FT9-FT10', 'FT10-T8', 'T8-P8']
+
+data_bipolar = np.random.randn(len(bipolar_ch_names), 1000)  # esempio
+
+raw_monopolar = bipolar_to_monopolar(data_bipolar, bipolar_ch_names, sfreq=256)
+
+print(raw_monopolar.info)
+raw_monopolar.plot(n_channels=10, scalings='auto')
+
 """
+
+"""
+risultati dello studio del dataset pèer le seizure
+
+paths = get_path_list("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.edf'], sub_d=True)
+print('Numero di eeg: ', len(paths))
+
+subdirs = [entry.name for entry in os.scandir("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0") if entry.is_dir()]
+print('Numero di pazienti: ', len(subdirs))
+
+paths = get_path_list("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.txt'], sub_d=True)
+
+import pandas as pd
+from datetime import datetime, timedelta
+import re
+
+def parse_summary_txt(txt_path):
+    data = []
+    current = {}
+    sampling_rate = None
+    channels = []
+
+    seizure_start_pattern = re.compile(r'Seizure(?: \d+)? Start Time: (\d+) seconds')
+    seizure_end_pattern = re.compile(r'Seizure(?: \d+)? End Time: (\d+) seconds')
+
+    with open(txt_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Frequenza di campionamento
+            if line.startswith("Data Sampling Rate:"):
+                sampling_rate = float(line.split(":",1)[1].strip().split()[0])
+
+            # Lista canali
+            elif line.startswith("Channels in EDF Files:"):
+                channels = []
+                continue
+
+            elif line.startswith("Channel "):
+                label = line.split(":",1)[1].strip()
+                channels.append(label)
+
+            # Inizio di un nuovo file
+            elif line.startswith("File Name:"):
+                if 'File Name' in current:
+                    current.setdefault("Seizure Start Times", [])
+                    current.setdefault("Seizure End Times", [])
+                    if current.get("Seizure Count", 0) > 0 and not current["Seizure Start Times"]:
+                        print(f"Warning: {current['File Name']} ha Seizure Count > 0 ma nessun inizio/fine segnalato")
+                    data.append(current.copy())
+                current = {"File Name": line.split(":",1)[1].strip()}
+
+            elif line.startswith("File Start Time:"):
+                current["Start Time"] = line.split(":",1)[1].strip()
+
+            elif line.startswith("File End Time:"):
+                current["End Time"] = line.split(":",1)[1].strip()
+
+            elif line.startswith("Number of Seizures in File:"):
+                current["Seizure Count"] = int(line.split(":",1)[1].strip())
+
+            else:
+                # Cattura tutti i Seizure Start/End numerati o non numerati
+                m_start = seizure_start_pattern.match(line)
+                m_end = seizure_end_pattern.match(line)
+                if m_start:
+                    current.setdefault("Seizure Start Times", []).append(int(m_start.group(1)))
+                elif m_end:
+                    current.setdefault("Seizure End Times", []).append(int(m_end.group(1)))
+
+        # aggiungo l'ultimo file
+        if current:
+            current.setdefault("Seizure Start Times", [])
+            current.setdefault("Seizure End Times", [])
+            if current.get("Seizure Count",0) > 0 and not current["Seizure Start Times"]:
+                print(f"Warning: {current['File Name']} ha Seizure Count > 0 ma nessun inizio/fine segnalato")
+            data.append(current)
+
+    # creo il DataFrame
+    df = pd.DataFrame(data)
+
+    # metadati generali
+    metadata = {
+        "Sampling Rate": sampling_rate,
+        "Channels": channels
+    }
+
+    return metadata, df
+
+
+# Utilizzo:
+print(len(paths))
+dfs = []
+for path in paths:  
+    metadata, df_files = parse_summary_txt(path)
+    dfs.append(df_files)
+
+total_df = pd.concat(dfs, ignore_index=True)
+
+def time_to_seconds(t):
+    if pd.isna(t):
+        return None  # gestisce valori mancanti
+    h, m, s = map(int, str(t).split(":"))
+    return h*3600 + m*60 + s
+
+# funzione per calcolare la durata in secondi
+def duration_seconds(row):
+    start_sec = time_to_seconds(row["Start Time"])
+    end_sec = time_to_seconds(row["End Time"])
+    
+    if start_sec is None or end_sec is None:
+        return None
+    
+    # se fine < inizio significa giorno successivo
+    if end_sec < start_sec:
+        end_sec += 24*3600
+    
+    return end_sec - start_sec
+
+def seizure_duration(row):
+    starts = row["Seizure Start Times"]
+    ends = row["Seizure End Times"]
+    # sottrazione elemento per elemento e somma delle durate
+    durations = [end - start for start, end in zip(starts, ends)]
+    return sum(durations)
+
+total_df["Duration (s)"] = total_df.apply(duration_seconds, axis=1)
+total_df["Seizure Duration (s)"] = total_df.apply( lambda row: sum(end - start for start, end in zip(row["Seizure Start Times"], row["Seizure End Times"])), axis=1)
+print(total_df.head())
+
+print('Durata totale degli edf: ',np.sum(total_df['Duration (s)'])/60/60)
+print('Durata totale delle seizure: ', np.sum(total_df['Seizure Duration (s)']/60/60))
+"""
+
