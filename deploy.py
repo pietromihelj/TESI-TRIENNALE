@@ -78,17 +78,17 @@ class DeployVAEEG():
         INPUT: Un segnale EEG monocanale. in_dim = [clip_num, 5, clip_len]
         OUTPUT: torch tensor segnale EEG ricostruito [band_num, temp_len] e le variabili latenti estratte [clip_num*50]        
         """
-        assert isinstance(inputs,torch.tensor), 'il segnale deve essere un aìtensore torch'
+        assert isinstance(inputs,torch.Tensor), 'il segnale deve essere un tensore torch'
         #per ogni banda passo le clip al modello ed estraggo le ricostruzioni e le variabili latenti
         inputs = inputs.to('cpu')
         rec_signal = []
         latent_signal = []
         #ogni banda ha forma [clip_num, 1, clip_len]
         for i in range(inputs.shape[1]):
-            rec, z = self.models[i](inputs[:,i:i+1,:])
+            _,_,rec, z = self.models[i](inputs[:,i:i+1,:])
             rec_signal.append(rec)
             latent_signal.append(z)
-        return rec_signal.transpose(0,1).flatten(1), torch.cat(latent_signal, dim=1)
+        return torch.stack(rec_signal,dim=0).transpose(0,1).sum(1), torch.cat(latent_signal,dim=1)
 
 class DeployBaseline():
     def __init__(self, path):
@@ -160,13 +160,13 @@ def get_orig_rec_latent(raw, model):
             c_r, c_l = model.run(ch)
             ch_rec.append(c_r.detach().cpu().numpy())
             ch_latent.append(c_l.detach().cpu().numpy())
-            #ogni cr,cl ha forma [bands_num, temp_len]
-        rec = np.stack(ch_rec, axis=0)
+            #c,l ha form [clip_num, latent_len]
+        rec = np.array(ch_rec).reshape(len(ch_rec), 1,-1)
         latent= np.stack(ch_latent, axis=0)
         orig=orig.transpose(1,2).flatten(2)
         orig=orig.detach().cpu().numpy()
         #ottengo una array numpy di forma [ch_num, band_num, temp_len]
-        return np.array(orig), np.array(rec), np.array(latent) 
+        return np.expand_dims(orig.sum(axis=1),1), rec, latent 
 
     if isinstance(model, DeployBaseline):
         orig = model.preprocess(signal=raw)
@@ -183,12 +183,12 @@ def get_orig_rec_latent(raw, model):
             ch_rec.append(c_r)
             ch_latent.append(c_l)
         rec= np.stack(ch_rec, axis=0)
-        latent = (np.stack(ch_latent, axis=0))
-        return np.expand_dims(orig.reshape(orig.shape[0],-1),axis=1), np.expand_dims(np.array(rec), axis=1), np.array(latent)
+        latent = np.stack(ch_latent, axis=0)
+        return np.expand_dims(orig.reshape(orig.shape[0],-1),axis=1), np.expand_dims(np.array(rec), axis=1), latent
     
 def load_models(model, save_files, params=None):
     if model == 'VAEEG':
-        model = DeployVAEEG(*save_files, *params)
+        model = DeployVAEEG(save_files, params)
     elif model in ['PCA','KernelPCA','FastICA']:
         model=DeployBaseline(save_files)
     else:

@@ -122,7 +122,7 @@ pearson_values = np.load('C:/Users/Pietro/Desktop/TESI/TESI-TRIENNALE/pearsons.n
 mae_values = np.load('C:/Users/Pietro/Desktop/TESI/TESI-TRIENNALE/mae.npy', allow_pickle=True)
 bands = ['Theta', 'Delta', 'Alpha', 'Low Beta', 'High Beta']
 
-fig, axes = plt.subplots(2,5, figsize=(15,6))
+fig, axes = plt.subplots(2,5, figsize=(12,6))
 steps = [np.arange(len(p)) for p in pearson_values]
 
 handles, labels = [], []
@@ -140,7 +140,8 @@ for i, (mae, pear, band, step) in enumerate(zip(mae_values, pearson_values, band
 
 fig.text(0.04, 0.75, 'MAE', va='center', rotation='vertical', fontsize=12)
 fig.text(0.04, 0.25, 'PCC', va='center', rotation='vertical', fontsize=12)
+fig.text(0.5, 0.02, 'Step', ha='center', fontsize=12)
 fig.legend(handles, labels, loc='upper center', ncol=4, fontsize=10)
-plt.tight_layout(rect=[0.05, 0.05, 1, 0.95])  
+plt.tight_layout(rect=[0.05, 0.05, 1, 0.95])
 plt.savefig('./results/VAEEG_Train_res.png')
 plt.show()
