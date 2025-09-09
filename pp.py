@@ -272,10 +272,10 @@ warnings.filterwarnings("ignore")
 raws = get_path_list("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.edf'], sub_d=True)
 print('Numero di campioni: ', len(raws))
 
-monopolars = []
 channels = []
 maxi = -np.inf
 mini = np.inf
+diffs = []
 
 for raw_path in tqdm(raws):
     raw = get_raw(raw_path)
@@ -284,20 +284,24 @@ for raw_path in tqdm(raws):
         del raw
         gc.collect()
         continue
-    mono, _ = to_monopolar(raw, ref=['CS', 'CZ']) 
+    try:
+        mono,diff = to_monopolar(raw, ref=['CS', 'CZ']) 
+    except Exception:
+        print(f'file {raw_path} troppo grande')
     channels.extend(mono.info['ch_names'])
     data = mono.get_data()  
     maxi = max(maxi, data.max())
     mini = min(mini, data.min())
-    monopolars.append(mono)
+    diffs.append(diff)
+    #path_no_ext = os.path.splitext(raw_path)[0]
+    #mne.export.export_raw(path_no_ext+'_mono.edf', mono, fmt='edf', physical_range=(min, max))
     for var_name in ['raw', 'mono', 'data']:
         if var_name in globals():
             del globals()[var_name]
     gc.collect()
 print(Counter(channels))
+print(f'Ampiezza: {mini}/{maxi}, Errore: max={np.max(diffs)}, mean={np.mean(diffs)}, var={np.var(diffs)}')
 
-for mono,path in tqdm(zip(monopolars, raws)):
-    path_no_ext = os.path.splitext(path)[0]
-    mne.export.export_raw(path_no_ext+'_mono.edf', mono, fmt='edf', physical_range=(min, max))
+    
 
 
