@@ -278,21 +278,27 @@ raws = get_path_list("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0", f_ex
 print('Numero di campioni: ', len(raws))
 
 i=0
+j=0
 
 for raw_path in tqdm(raws):
     raw = get_raw(raw_path)
     raw, flag = select_bipolar(raw)
     if not flag:
         save_path = raw_path.replace("CHB-MIT_seizure", "seizure_monopolar_dataset")
+        if any(ch not in raw.info['ch_names'] for ch in channels):
+            j=j+1
+            continue
         raw.pick(channels)
         raw.rename_channels(rename_dict)
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         mne.export.export_raw(save_path, raw, fmt='edf', physical_range=(-1.5*0.005, 1.5*0.005), overwrite=True, verbose=False)
+        i=i+1
         del raw
         gc.collect()
         continue
     mono,_ = to_monopolar(raw, ref=['CS', 'CZ']) 
     if any(ch not in mono.info['ch_names'] for ch in channels):
+        j=j+1
         continue
     mono.pick(channels)
     mono.rename_channels(rename_dict)  
@@ -304,6 +310,8 @@ for raw_path in tqdm(raws):
         if var_name in globals():
             del globals()[var_name]
     gc.collect()
-print(i)
+
+print('File salvati: ',i)
+print('File eliminati per canali mancanti: ',j)
 
 eeg = mne.io.read_raw_edf("D:/seizure_monopolar_dataset/chb-mit-scalp-eeg-database-1.0.0/chb01/chb01_01.edf")
