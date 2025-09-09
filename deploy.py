@@ -47,7 +47,7 @@ class DeployVAEEG():
         if fs != 250:
             ratio = 250/fs
             signal = mne.filter.resample(signal, ratio, verbose=False)
-        
+        signal = signal - signal.mean(axis=0, keepdims=True)
         mth = int(m_len*fs)
         start = int(drop*fs)
         end = signal.shape[1] - int(drop*fs)
@@ -112,6 +112,7 @@ class DeployBaseline():
         if fs != 250:
             ratio = 250/fs
             signal = mne.filter.resample(signal, ratio, verbose=False)
+        signal = signal - signal.mean(axis=0, keepdims=True)
         mth = int(m_len*fs)
         start = int(drop*fs)
         end = signal.shape[1] - int(drop*fs)
@@ -142,14 +143,14 @@ class DeployBaseline():
         rec = self.model.inverse_transform(z)
         return rec.flatten(), z
 
-def get_orig_rec_latent(raw, model):
+def get_orig_rec_latent(raw, model, fs=250):
     """
     INPUT: segnale EEG numpy
     OUTPUT: numpy array originale = [ch_num, band_num, temp_len], ricostruzione = [ch_num, band_num, temp_len], latente dim [ch_num, clip_num ,50]
     """
     assert isinstance(raw, np.ndarray), 'input deve essere una array numpy'
     if isinstance(model, DeployVAEEG):
-        orig = model.preprocess(signal=raw)
+        orig = model.preprocess(signal=raw, fs=fs)
         #origin diventa una lista di forma [ch_num, clip_num, bands_num, clip_len]
         if orig is None:
             return None, None, None 

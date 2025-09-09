@@ -7,6 +7,7 @@ import itertools as it
 import portion as P
 from functools import wraps
 from inspect import signature
+import re
 
 def check_type(p_name, p_value, allowed_types):
     """"
@@ -118,7 +119,6 @@ def find_artefacts_1d(mask, a_th=0):
                 res.append(P.closed(index[0], index[-1]))
         #restituisco un set di intervalli      
     return res
-
 
 def find_artefacts_2d(mask, a_th=0):
     #controllo dei tipi in input
@@ -253,3 +253,190 @@ def check_channel_names(raw_obj, verbose):
             raw_obj.pick(ch_necessary)
         else:
             raise RuntimeError("Channel Error")
+        
+def parse_summary_txt(txt_path):
+
+    data = []
+    current = {}
+    sampling_rate = None
+    channels = []
+
+    seizure_start_pattern = re.compile(r'Seizure(?: \d+)? Start Time: (\d+) seconds')
+    seizure_end_pattern = re.compile(r'Seizure(?: \d+)? End Time: (\d+) seconds')
+
+    with open(txt_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Frequenza di campionamento
+            if line.startswith("Data Sampling Rate:"):
+                sampling_rate = float(line.split(":",1)[1].strip().split()[0])
+
+            # Lista canali
+            elif line.startswith("Channels in EDF Files:"):
+                channels = []
+                continue
+
+            elif line.startswith("Channel "):
+                label = line.split(":",1)[1].strip()
+                channels.append(label)
+
+            # Inizio di un nuovo file
+            elif line.startswith("File Name:"):
+                if 'File Name' in current:
+                    current.setdefault("Seizure Start Times", [])
+                    current.setdefault("Seizure End Times", [])
+                    if current.get("Seizure Count", 0) > 0 and not current["Seizure Start Times"]:
+                        print(f"Warning: {current['File Name']} ha Seizure Count > 0 ma nessun inizio/fine segnalato")
+                    data.append(current.copy())
+                current = {"File Name": line.split(":",1)[1].strip()}
+
+            elif line.startswith("File Start Time:"):
+                current["Start Time"] = line.split(":",1)[1].strip()
+
+            elif line.startswith("File End Time:"):
+                current["End Time"] = line.split(":",1)[1].strip()
+
+            elif line.startswith("Number of Seizures in File:"):
+                current["Seizure Count"] = int(line.split(":",1)[1].strip())
+
+            else:
+                # Cattura tutti i Seizure Start/End numerati o non numerati
+                m_start = seizure_start_pattern.match(line)
+                m_end = seizure_end_pattern.match(line)
+                if m_start:
+                    current.setdefault("Seizure Start Times", []).append(int(m_start.group(1)))
+                elif m_end:
+                    current.setdefault("Seizure End Times", []).append(int(m_end.group(1)))
+
+        # aggiungo l'ultimo file
+        if current:
+            current.setdefault("Seizure Start Times", [])
+            current.setdefault("Seizure End Times", [])
+            if current.get("Seizure Count",0) > 0 and not current["Seizure Start Times"]:
+                print(f"Warning: {current['File Name']} ha Seizure Count > 0 ma nessun inizio/fine segnalato")
+            data.append(current)
+
+    # creo il DataFrame
+    df = pd.DataFrame(data)
+
+    # metadati generali
+    metadata = {
+        "Sampling Rate": sampling_rate,
+        "Channels": channels
+    }
+
+    return metadata, df
+
+def to_monopolar(raw_bipolar, ref='average', ch_name_sep='-'):
+    """
+    Ricostruisce canali monopolari da bipolari, con possibilità di più riferimenti.
+    
+    Parametri
+    ----------
+    raw_bipolar : mne.io.Raw
+        Oggetto Raw con canali bipolari (es. 'T8-P8').
+    ref : str, list of str o None
+        - 'average' -> sottrae la media su tutti gli elettrodi
+        - lista di nomi elettrodi -> usa il primo presente come riferimento
+        - nome singolo -> usa quell'elettrodo come riferimento
+        - None -> lascia costante arbitraria
+    ch_name_sep : str
+        Separatore nei nomi bipolari (default '-')
+    
+    Ritorna
+    -------
+    raw_monopolar : mne.io.RawArray
+        Segnali monopolari ricostruiti
+    max_diff : float
+        Errore massimo di ricostruzione
+    """
+    ch_names = raw_bipolar.ch_names
+    data_bip, times = raw_bipolar.get_data(return_times=True)
+    data_bip = data_bip.astype(np.float32)
+    n_bip, n_samples = data_bip.shape
+
+    # Parse bipoli
+    pairs = []
+    for ch in ch_names:
+        if ch_name_sep in ch:
+            a, c = ch.split(ch_name_sep, 1)
+            a, c = a.strip(), c.strip()
+            pairs.append((a, c))
+        else:
+            raise ValueError(f"Channel name '{ch}' non contiene il separatore '{ch_name_sep}'")
+    
+    # Lista unica di elettrodi
+    electrodes = []
+    for a, c in pairs:
+        if a.upper() not in electrodes:
+            electrodes.append(a.upper())
+        if c.upper() not in electrodes:
+            electrodes.append(c.upper())
+    n_ele = len(electrodes)
+
+    # Matrice A (n_bip x n_ele)
+    A = np.zeros((n_bip, n_ele), dtype=float)
+    for i, (a, c) in enumerate(pairs):
+        A[i, electrodes.index(a)] =  1.0
+        A[i, electrodes.index(c)] = -1.0
+
+    # Pseudoinversa e soluzione
+    A_pinv = np.linalg.pinv(A)
+    V = A_pinv.dot(data_bip)
+
+    # Gestione riferimenti multipli
+    if isinstance(ref, list):
+        # prendi il primo riferimento presente nella lista
+        ref_found = None
+        for r in ref:
+            if r in electrodes:
+                ref_found = r
+                break
+        if ref_found is None:
+            raise ValueError(f"Nessun riferimento della lista trovato negli elettrodi: {ref}, lista:{electrodes}")
+        ref = ref_found  # ora diventa stringa singola
+
+    # Applica riferimento
+    if ref == 'average':
+        V = V - V.mean(axis=0, keepdims=True)
+    elif isinstance(ref, str):
+        ref_idx = electrodes.index(ref)
+        V = V - V[ref_idx:ref_idx+1, :]
+    elif ref is None:
+        pass
+    else:
+        raise ValueError("Param ref deve essere 'average', None, stringa o lista di stringhe.")
+
+    # Crea info e RawArray
+    sfreq = raw_bipolar.info['sfreq']
+    info = mne.create_info(ch_names=electrodes, sfreq=sfreq, ch_types='eeg')
+    raw_monopolar = mne.io.RawArray(V, info, verbose=False)
+
+    # Controllo ricostruzione
+    reconstructed_bip = A.dot(V)
+    max_diff = max(np.max(np.abs(A[i, :].dot(V) - data_bip[i, :])) for i in range(n_bip))
+
+    return raw_monopolar, max_diff
+
+def select_bipolar(raw):
+    ch_necessary = ['FP1', 'FP2', 'F3', 'F4', 'FZ',
+                'F7', 'F8', 'P3', 'P4', 'PZ',
+                'C3', 'C4', 'CZ', 'T3', 'T4',
+                'T5', 'T6', 'O1', 'O2']
+    flag = False
+
+    selected_chs = []
+    for ch in raw.ch_names:
+        if '-' in ch:  # canale bipolare
+            a, c = ch.upper().split('-', 1)
+            if a in ch_necessary or c in ch_necessary:
+                selected_chs.append(ch)
+                flag = True
+        else:  # canale già monopolare
+            if ch.upper() in ch_necessary:
+                selected_chs.append(ch)
+    return raw.pick(selected_chs), flag
+

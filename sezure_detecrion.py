@@ -1,6 +1,25 @@
-import torch
+import torch 
 import torch.nn as nn
-from torch.utils.data import Dataset,DataLoader
+import os 
+from sklearn import metrics
+from torch.utils.data import DataLoader, Dataset
+from utils import get_path_list, parse_summary_txt, get_raw
+
+import numpy as np
+import pandas as pd
+
+SAVE_FILE = "./SubAnalyze_SeizureDetection/Model/Models"
+
+"""
+Nella parte di codice seguente vado a creare il dato in forma (clip,label)
+"""
+paths_eeg = get_path_list("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.edf'], sub_d=True)
+paths_txt = paths = get_path_list("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.txt'], sub_d=True)
+
+for path in paths_eeg:
+    raw = get_raw(path)
+    raw = raw.pick(list(dict.fromkeys(raw.ch_names)))
+
 
 def initialize_weights(model):
     for m in model.modules():
@@ -27,14 +46,44 @@ def initialize_weights(model):
                     nn.init.constant_(parma, 2)
     return model
 
+class Dataset_predata(Dataset):
+    def __init__(self, mode, ds):
+        self.data = np.load(f"./SubAnalyze_SeizureDetection/Model/dataset/{mode}_{ds}.npz", allow_pickle=True)
+        self.data_2 = np.load(f"./SubAnalyze_SeizureDetection/Model/dataset/{mode}_eval.npz", allow_pickle=True)
+        self.label = self.data["label"][:, np.newaxis]
+        self.data = self.data["data"]
+        self.label_2 = self.data_2["label"][:, np.newaxis]
+        self.data_2 = self.data_2["data"]
+
+        
+        self.data = np.concatenate([self.data, self.data_2], axis=0)
+        self.label = np.concatenate([self.label, self.label_2], axis=0)
+
+        print(f"{mode}_{ds}", sum(self.label == 0) , sum(self.label == 1))
+
+    
+    def __len__(self):
+        return self.data.shape[0]
+    
+    def __getitem__(self, index):
+        return self.data[index], self.label[index]
+
 class Conv1dLayer(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride,
                  dilation=1, bias=True):
         super(Conv1dLayer, self).__init__()
+
         total_p = kernel_size + (kernel_size - 1) * (dilation - 1) - 1
         left_p = total_p // 2
         right_p = total_p - left_p
-        self.conv = nn.Sequential(nn.ConstantPad1d((left_p, right_p), 0), nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride, dilation=dilation, bias=bias))
+
+        self.conv = nn.Sequential(nn.ConstantPad1d((left_p, right_p), 0),
+                                  nn.Conv1d(in_channels=in_channels,
+                                            out_channels=out_channels,
+                                            kernel_size=kernel_size,
+                                            stride=stride, dilation=dilation,
+                                            bias=bias))
+
     def forward(self, x):
         return self.conv(x)
     
@@ -43,17 +92,40 @@ class HeadLayer(nn.Module):
     Multiple paths to process input data. Four paths with kernel size 5, 7, 9, respectively.
     Each path has one convolution layer.
     """
+
     def __init__(self, in_channels, out_channels, negative_slope=0.2):
         super(HeadLayer, self).__init__()
+
         if out_channels % 4 != 0:
             raise ValueError("out_channels must be divisible by 4, but got: %d" % out_channels)
+
         unit = out_channels // 4
 
-        self.conv1 = nn.Sequential(Conv1dLayer(in_channels=in_channels, out_channels=unit, kernel_size=9, stride=1, bias=False), nn.BatchNorm1d(unit), nn.LeakyReLU(negative_slope))
-        self.conv2 = nn.Sequential(Conv1dLayer(in_channels=in_channels, out_channels=unit, kernel_size=7, stride=1, bias=False), nn.BatchNorm1d(unit), nn.LeakyReLU(negative_slope))
-        self.conv3 = nn.Sequential(Conv1dLayer(in_channels=in_channels, out_channels=unit, kernel_size=5, stride=1, bias=False), nn.BatchNorm1d(unit), nn.LeakyReLU(negative_slope))
-        self.conv4 = nn.Sequential(Conv1dLayer(in_channels=in_channels, out_channels=unit, kernel_size=3, stride=1, bias=False), nn.BatchNorm1d(unit), nn.LeakyReLU(negative_slope))
-        self.conv5 = nn.Sequential(Conv1dLayer(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, bias=False), nn.BatchNorm1d(out_channels), nn.LeakyReLU(negative_slope))
+        self.conv1 = nn.Sequential(Conv1dLayer(in_channels=in_channels, out_channels=unit,
+                                               kernel_size=9, stride=1, bias=False),
+                                   nn.BatchNorm1d(unit),
+                                   nn.LeakyReLU(negative_slope))
+
+        self.conv2 = nn.Sequential(Conv1dLayer(in_channels=in_channels, out_channels=unit,
+                                               kernel_size=7, stride=1, bias=False),
+                                   nn.BatchNorm1d(unit),
+                                   nn.LeakyReLU(negative_slope))
+
+        self.conv3 = nn.Sequential(Conv1dLayer(in_channels=in_channels, out_channels=unit,
+                                               kernel_size=5, stride=1, bias=False),
+                                   nn.BatchNorm1d(unit),
+                                   nn.LeakyReLU(negative_slope))
+
+        self.conv4 = nn.Sequential(Conv1dLayer(in_channels=in_channels, out_channels=unit,
+                                               kernel_size=3, stride=1, bias=False),
+                                   nn.BatchNorm1d(unit),
+                                   nn.LeakyReLU(negative_slope))
+        
+
+        self.conv5 = nn.Sequential(Conv1dLayer(in_channels=out_channels, out_channels=out_channels,
+                                               kernel_size=3, stride=1, bias=False),
+                                   nn.BatchNorm1d(out_channels),
+                                   nn.LeakyReLU(negative_slope))
 
     def forward(self, x):
         x1 = self.conv1(x)
@@ -65,16 +137,18 @@ class HeadLayer(nn.Module):
         return out
 
 class SeizureDetect_Model(nn.Module):
-
     def __init__(self, target_channels=8):
         super(SeizureDetect_Model, self).__init__()
         self.flatten0 = nn.Flatten(start_dim=-2, end_dim=-1)
         self.headlayer = HeadLayer(19, target_channels)
         # reshape (8, 50) than transpose (10, 8, 50) than flatten 
         self.flatten1 = nn.Flatten(start_dim=-2, end_dim=-1)
+
         self.lstm0 = nn.LSTM(50 * target_channels, 256, num_layers=2, batch_first=True,  bidirectional=False, dropout=0.1)
         self.lstm1 = nn.LSTM(256, 16, num_layers=1, batch_first=True,  bidirectional=False)
-        self.linear = nn.Sequential(nn.Flatten(start_dim=-2, end_dim=-1), nn.Linear(10 * 16, 32), nn.ReLU(), nn.Dropout(p=0.1), nn.Linear(32, 1), nn.Sigmoid())
+
+        self.linear = nn.Sequential(nn.Flatten(start_dim=-2, end_dim=-1), nn.Linear(10 * 16, 32), nn.ReLU(), nn.Dropout(p=0.1),
+                                    nn.Linear(32, 1), nn.Sigmoid())
         
     def forward(self, x):
         x = self.flatten0(x)
@@ -86,7 +160,3 @@ class SeizureDetect_Model(nn.Module):
         x, _ = self.lstm1(x)
         res = self.linear(x)
         return res 
-    
-class dataset_sezure(Dataset):
-    def __init__(self, model):
-        

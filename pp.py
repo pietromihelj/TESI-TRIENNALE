@@ -1,10 +1,10 @@
+"""
 from utils import get_path_list
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-"""
 Grafico piramide delle età per il dataset della age regression
 
 df = pd.read_csv("D:/nmt_scalp_age_dataset/Labels.csv")
@@ -121,7 +121,7 @@ raw_monopolar.plot(n_channels=10, scalings='auto')
 """
 
 """
-risultati dello studio del dataset pèer le seizure
+#risultati dello studio del dataset pèer le seizure
 
 paths = get_path_list("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.edf'], sub_d=True)
 print('Numero di eeg: ', len(paths))
@@ -130,6 +130,8 @@ subdirs = [entry.name for entry in os.scandir("D:/CHB-MIT_seizure/chb-mit-scalp-
 print('Numero di pazienti: ', len(subdirs))
 
 paths = get_path_list("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.txt'], sub_d=True)
+
+
 
 import pandas as pd
 from datetime import datetime, timedelta
@@ -254,4 +256,48 @@ print(total_df.head())
 print('Durata totale degli edf: ',np.sum(total_df['Duration (s)'])/60/60)
 print('Durata totale delle seizure: ', np.sum(total_df['Seizure Duration (s)']/60/60))
 """
+
+
+from utils import get_path_list, to_monopolar, select_bipolar, get_raw
+import warnings
+import numpy as np
+from collections import Counter
+from tqdm import tqdm
+import mne
+import os
+import gc
+
+warnings.filterwarnings("ignore")
+
+raws = get_path_list("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.edf'], sub_d=True)
+print('Numero di campioni: ', len(raws))
+
+monopolars = []
+channels = []
+maxi = -np.inf
+mini = np.inf
+
+for raw_path in tqdm(raws):
+    raw = get_raw(raw_path)
+    raw, flag = select_bipolar(raw)
+    if not flag:
+        del raw
+        gc.collect()
+        continue
+    mono, _ = to_monopolar(raw, ref=['CS', 'CZ']) 
+    channels.extend(mono.info['ch_names'])
+    data = mono.get_data()  
+    maxi = max(maxi, data.max())
+    mini = min(mini, data.min())
+    monopolars.append(mono)
+    for var_name in ['raw', 'mono', 'data']:
+        if var_name in globals():
+            del globals()[var_name]
+    gc.collect()
+print(Counter(channels))
+
+for mono,path in tqdm(zip(monopolars, raws)):
+    path_no_ext = os.path.splitext(path)[0]
+    mne.export.export_raw(path_no_ext+'_mono.edf', mono, fmt='edf', physical_range=(min, max))
+
 
