@@ -3,3 +3,8 @@ pvl_mae [0.47963429876926933]
 pc_maes:  [1.5128213170685327]
 pearson_maes:  [0.01673942251439155]
 nrmse_mae:  [249983.55542442997]
+
+differenze di ricostruzione dei canali bipolari
+Errore: max=4.336808689942018e-18, mean=1.0889227713085065e-18, var=2.7410292941336277e-37
+
+onteggio canali dataset seizure: Counter({'FP1': 684, 'F7': 684, 'O1': 684, 'F3': 684, 'C3': 684, 'P3': 684, 'FP2': 684, 'F4': 684, 'C4': 684, 'P4': 684, 'O2': 684, 'F8': 684, 'FZ': 684, 'CZ': 684, 'PZ': 684, 'T7': 683, 'P7': 683, 'T8': 683, 'P8': 683, 'OZ': 39, 'CS2': 1})

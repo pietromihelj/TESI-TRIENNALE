@@ -258,7 +258,10 @@ print('Durata totale delle seizure: ', np.sum(total_df['Seizure Duration (s)']/6
 """
 
 
-from utils import get_path_list, to_monopolar, select_bipolar, get_raw
+
+#monopolarizzazione dei canali per il seizure dataset
+
+from utils import get_path_list, to_monopolar, select_bipolar, get_raw, check_channel_names
 import warnings
 import numpy as np
 from collections import Counter
@@ -266,42 +269,41 @@ from tqdm import tqdm
 import mne
 import os
 import gc
-
 warnings.filterwarnings("ignore")
+
+channels = ['FP1', 'F7', 'O1', 'F3', 'C3', 'P3', 'FP2', 'F4', 'C4', 'P4', 'O2', 'F8', 'FZ', 'CZ', 'PZ', 'T7', 'P7', 'T8', 'P8']
+rename_dict = {'T7':'T3', 'P7':'T5', 'T8':'T4', 'P8':'T6'}
 
 raws = get_path_list("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.edf'], sub_d=True)
 print('Numero di campioni: ', len(raws))
 
-channels = []
-maxi = -np.inf
-mini = np.inf
-diffs = []
+i=0
 
 for raw_path in tqdm(raws):
     raw = get_raw(raw_path)
     raw, flag = select_bipolar(raw)
     if not flag:
+        save_path = raw_path.replace("CHB-MIT_seizure", "seizure_monopolar_dataset")
+        raw.pick(channels)
+        raw.rename_channels(rename_dict)
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        mne.export.export_raw(save_path, raw, fmt='edf', physical_range=(-1.5*0.005, 1.5*0.005), overwrite=True, verbose=False)
         del raw
         gc.collect()
         continue
-    try:
-        mono,diff = to_monopolar(raw, ref=['CS', 'CZ']) 
-    except Exception:
-        print(f'file {raw_path} troppo grande')
-    channels.extend(mono.info['ch_names'])
-    data = mono.get_data()  
-    maxi = max(maxi, data.max())
-    mini = min(mini, data.min())
-    diffs.append(diff)
-    #path_no_ext = os.path.splitext(raw_path)[0]
-    #mne.export.export_raw(path_no_ext+'_mono.edf', mono, fmt='edf', physical_range=(min, max))
+    mono,_ = to_monopolar(raw, ref=['CS', 'CZ']) 
+    if any(ch not in mono.info['ch_names'] for ch in channels):
+        continue
+    mono.pick(channels)
+    mono.rename_channels(rename_dict)  
+    save_path = raw_path.replace("CHB-MIT_seizure", "seizure_monopolar_dataset")
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    mne.export.export_raw(save_path, mono, fmt='edf', physical_range=(-1.5*0.005, 1.5*0.005), overwrite=True, verbose=False)
+    i = i+1
     for var_name in ['raw', 'mono', 'data']:
         if var_name in globals():
             del globals()[var_name]
     gc.collect()
-print(Counter(channels))
-print(f'Ampiezza: {mini}/{maxi}, Errore: max={np.max(diffs)}, mean={np.mean(diffs)}, var={np.var(diffs)}')
+print(i)
 
-    
-
-
+eeg = mne.io.read_raw_edf("D:/seizure_monopolar_dataset/chb-mit-scalp-eeg-database-1.0.0/chb01/chb01_01.edf")
