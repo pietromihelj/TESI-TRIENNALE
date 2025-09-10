@@ -137,6 +137,7 @@ class HeadLayer(nn.Module):
         return out
 
 class SeizureDetect_Model(nn.Module):
+
     def __init__(self, target_channels=8):
         super(SeizureDetect_Model, self).__init__()
         self.flatten0 = nn.Flatten(start_dim=-2, end_dim=-1)
@@ -160,3 +161,67 @@ class SeizureDetect_Model(nn.Module):
         x, _ = self.lstm1(x)
         res = self.linear(x)
         return res 
+    
+def bce_Loss(input, target, weight=None, device='gpu'):
+    if weight:
+        weight_ = torch.ones(target.size()).to(device)
+        weight_[target==0] = weight
+        return nn.BCELoss(weight=weight_)(input, target)
+    else:
+        return nn.BCELoss()(input, target)
+
+def save_model(model, file):
+    torch.save(model.state_dict(), file)
+
+def load_model(model_frame, file):
+    model_frame.load_state_dict(torch.load(file))
+    return model_frame
+
+def get_metrics(predict, label, class_num=2):
+    predict = predict.round()
+    metric_cm = metrics.confusion_matrix(label, predict, labels=list(range(class_num)))
+    metric = metric_cm / metric_cm.sum(axis=1, keepdims=True)
+    acc0, acc1 = np.diagonal(metric)
+    acc_total = metrics.accuracy_score(label, predict)
+    return metric_cm, np.round(np.array([acc0, acc1, acc_total]), 3)
+
+def train_model(model, n_epoch, trainloader, dataloader, lr, device='cuda', weigth = 0.15):
+
+    model = SeizureDetect_Model().to(device)
+    model.apply(initialize_weights)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    for e in range(n_epoch):
+        model.train()
+        tr_losses = []
+        tr_accs = []
+
+        for tr_data, labels in trainloader:
+            pred = model(tr_data.float.to(device))
+            loss = bce_Loss(pred, labels.float().to(device), weight=weigth, device=device)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            tr_losses.append(loss)
+            _, accs = get_metrics(pred.to("cpu").detach().numpy(), labels.to("cpu").detach().numpy(), class_num=2)
+            tr_accs.append(accs[2])
+        
+        print(f'Epoch: {e}, Loss: {torch.tensor(tr_losses).mean()}, Accuracy: {torch.tensor(tr_accs).mean()}')
+    
+    model.eval()
+    te_CMs = []
+    accs = []
+    rec_seiz = []
+    rec_norm = []
+    for te_data, labels in dataloader:
+        te_pred = model(te_data.float().to(device))
+        te_cm, te_accs = get_metrics(te_pred.to('cpu').detach().numpy(), labels.to('cpu').detach().numpy(), class_num=2)
+        te_CMs.append(te_cm)
+        accs.append(te_accs[2])
+        rec_norm(te_accs[0])
+        rec_seiz(te_accs[1])
+
+    print(f'Test accuracy:{torch.tensor(accs).mean()}, recall norm: {torch.tensor(rec_norm).mean()}, recall seizure: {torch.tensor(rec_seiz).mean()}')
+    print(f'Confuzion Metrics: {torch.tensor(te_CMs).mean(dim=0)}')
+
+    return torch.tensor(te_CMs).mean(dim=0), torch.tensor(accs).mean(), torch.tensor(rec_norm).mean(), torch.tensor(rec_seiz).mean()

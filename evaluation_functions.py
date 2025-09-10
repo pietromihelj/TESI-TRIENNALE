@@ -112,10 +112,10 @@ class ConComparison():
         INPUT: 2 segnali monocanale complessi [temp_len]
         OUTPUT: phase lock value tra i 2 canali
         """
-        assert data_a.dtype == complex and data_b.dtype == complex,  'data type must be complex , got %s %s'%(data_a.dtype, data_b.dtype)
+        assert np.issubdtype(data_a.dtype, np.complexfloating) and np.issubdtype(data_b.dtype, np.complexfloating), 'data type must be complex, got %s %s' % (data_a.dtype, data_b.dtype)
         #calcolo la fase
-        data_a = np.arctan(data_a.imag / data_a.real)
-        data_b = np.arctan(data_b.imag / data_b.real)
+        data_a = np.arctan2(data_a.imag, data_a.real)
+        data_b = np.arctan2(data_b.imag, data_b.real)
         #calcolo la differenza di fase per campione
         t = np.exp(complex(0,1)*(data_a-data_b))
         #calcolo il pvl 
@@ -194,22 +194,28 @@ def evaluate(data_dir, model, model_files, params, cuts, f_extensions=['.edf']):
     OUTPUT: Grafici salvati come png delle matrici di correlazione della connettività e della fase
     """
 
-    path_list = utils.get_path_list(data_dir, f_extensions,True)
-    model = load_models(model, model_files, params)
+    #path_list = utils.get_path_list(data_dir, f_extensions,True)
+    #model = load_models(model, model_files, params)
+    #origis = []
+    #recs = []
+    #for j,path in enumerate(path_list):
+    #    raw = utils.get_raw(path, preload=True)
+    #    utils.check_channel_names(raw_obj=raw, verbose=False)
+    #    raw = raw.get_data()
+    #    raw = np.array(raw, np.float64)
+    #    raw = raw[:,cuts[0]:cuts[1]]
+    #    orig, rec, _ = get_orig_rec_latent(raw, model)
+    #    origis.append(orig)
+    #    recs.append(rec)
+    #    if j==2:
+    #        break
+    
     origis = []
     recs = []
-    for j,path in enumerate(path_list):
-        raw = utils.get_raw(path, preload=True)
-        utils.check_channel_names(raw_obj=raw, verbose=False)
-        raw = raw.get_data()
-        raw = np.array(raw, np.float64)
-        raw = raw[:,cuts[0]:cuts[1]]
-        orig, rec, _ = get_orig_rec_latent(raw, model)
-        origis.append(orig)
-        recs.append(rec)
-        if j==2:
-            break
-    
+    for orig, rec in zip(utils.get_path_list(data_dir+'/orig', f_extensions=['.npy']), utils.get_path_list(data_dir+'/rec', f_extensions=['.npy'])):
+        origis.append(np.load(orig))
+        recs.append(np.load(rec))
+
     print('origis: ', type(origis[0]), origis[0].shape)
     print('recs: ', type(recs[0]), recs[0].shape)
 
@@ -232,14 +238,14 @@ def evaluate(data_dir, model, model_files, params, cuts, f_extensions=['.edf']):
 
     pears_is = []
     nrmse_s = []
-    for o,r in zip(orig, rec):
+    for o,r in zip(origis, recs):
         print(o.shape,r.shape)
         pears_is.append(pearsonr(o.flatten(),r.flatten()))
         nrmse_s.append(NRMSE(o.flatten(),r.flatten()))
     
     print('CHECKPOINT: Inizio calcolo ampiezza media')
     ch_ampl = [[],[]]
-    for o,r in zip(orig, rec):
+    for o,r in zip(origis, recs):
         ch_ampl[0].append(np.mean(np.abs(o),axis=1))
         ch_ampl[1].append(np.mean(np.abs(r), axis=1))
     

@@ -258,60 +258,31 @@ print('Durata totale delle seizure: ', np.sum(total_df['Seizure Duration (s)']/6
 """
 
 
-
-#monopolarizzazione dei canali per il seizure dataset
-
-from utils import get_path_list, to_monopolar, select_bipolar, get_raw, check_channel_names
-import warnings
+from utils import get_path_list, get_raw, check_channel_names
+from deploy import load_models, get_orig_rec_latent
 import numpy as np
-from collections import Counter
+import os 
 from tqdm import tqdm
-import mne
-import os
 import gc
-warnings.filterwarnings("ignore")
 
-channels = ['FP1', 'F7', 'O1', 'F3', 'C3', 'P3', 'FP2', 'F4', 'C4', 'P4', 'O2', 'F8', 'FZ', 'CZ', 'PZ', 'T7', 'P7', 'T8', 'P8']
-rename_dict = {'T7':'T3', 'P7':'T5', 'T8':'T4', 'P8':'T6'}
-
-raws = get_path_list("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.edf'], sub_d=True)
-print('Numero di campioni: ', len(raws))
-
-i=0
-j=0
-
-for raw_path in tqdm(raws):
-    raw = get_raw(raw_path)
-    raw, flag = select_bipolar(raw)
-    if not flag:
-        save_path = raw_path.replace("CHB-MIT_seizure", "seizure_monopolar_dataset")
-        if any(ch not in raw.info['ch_names'] for ch in channels):
-            j=j+1
-            continue
-        raw.pick(channels)
-        raw.rename_channels(rename_dict)
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        mne.export.export_raw(save_path, raw, fmt='edf', physical_range=(-1.5*0.005, 1.5*0.005), overwrite=True, verbose=False)
-        i=i+1
-        del raw
-        gc.collect()
-        continue
-    mono,_ = to_monopolar(raw, ref=['CS', 'CZ']) 
-    if any(ch not in mono.info['ch_names'] for ch in channels):
-        j=j+1
-        continue
-    mono.pick(channels)
-    mono.rename_channels(rename_dict)  
-    save_path = raw_path.replace("CHB-MIT_seizure", "seizure_monopolar_dataset")
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    mne.export.export_raw(save_path, mono, fmt='edf', physical_range=(-1.5*0.005, 1.5*0.005), overwrite=True, verbose=False)
-    i = i+1
-    for var_name in ['raw', 'mono', 'data']:
-        if var_name in globals():
-            del globals()[var_name]
+save_norm = 'D:/dataset_seizure/normal/'
+save_seiz = 'D:/dataset_seizure/abnormal/'
+os.makedirs(save_norm, exist_ok=True)
+os.makedirs(save_seiz, exist_ok=True)
+normal_paths = get_path_list("D:/seizure_dataset/normal", f_extensions=['.edf'], sub_d=True)
+seizure_paths = get_path_list("D:/seizure_dataset/seizure", f_extensions=['.edf'], sub_d=True)
+model = load_models(model='VAEEG', save_files=['models/VAEEG/delta_band.ckpt', 'models/VAEEG/theta_band.ckpt', 'models/VAEEG/alpha_band.ckpt', 'models/VAEEG/low_beta_band.ckpt', 'models/VAEEG/high_beta_band.ckpt'], params=[[8], [10], [12], [10], [10]])
+for norm, seiz in tqdm(zip(normal_paths,seizure_paths),desc='Salvataggio dati'):
+    raw_norm = get_raw(norm)
+    raw_seiz = get_raw(seiz)
+    check_channel_names(raw_norm, verbose=False)
+    check_channel_names(raw_seiz, verbose=False)
+    eeg_norm = raw_norm.get_data()
+    eeg_seiz = raw_seiz.get_data()
+    _, _, latent_norm = get_orig_rec_latent(raw=eeg_norm, model=model, fs=256)
+    _, _, latent_seiz = get_orig_rec_latent(raw=eeg_seiz, model=model, fs=256)
+    base_name = os.path.splitext(os.path.basename(norm))[0]
+    np.save(os.path.join(save_norm, base_name + '.npy'), latent_norm)
+    np.save(os.path.join(save_seiz, base_name + '.npy'), latent_seiz)
+    del raw_norm, raw_seiz, eeg_norm, eeg_seiz, latent_norm, latent_seiz
     gc.collect()
-
-print('File salvati: ',i)
-print('File eliminati per canali mancanti: ',j)
-
-eeg = mne.io.read_raw_edf("D:/seizure_monopolar_dataset/chb-mit-scalp-eeg-database-1.0.0/chb01/chb01_01.edf")
