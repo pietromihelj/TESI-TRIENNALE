@@ -13,9 +13,9 @@ source /opt/spack/opt/spack/linux-rocky9-x86_64/gcc-13.2.0/miniconda3-22.11.1-tn
 cd /u/pmihelj/TESI-TRIENNALE
 
 python3 -u eval.py \
---data_dir "/u/pmihelj/datasets/TUAB_eval" \
---models FastICA \
---model_save_name FastICA_par_logcosh \
---model_save_files  /u/pmihelj/models/fast_ica/parallel/logcosh_FastICA_whole.pkl \
---params 1 \
+--data_dir "/u/pmihelj/datasets/eval" \
+--model VAEEG \
+--model_save_name VAEEG \
+--model_save_files  /u/pmihelj/models/models/VAEEG/delta_band.ckpt /u/pmihelj/models/models/VAEEG/theta_band.ckpt /u/pmihelj/models/models/VAEEG/alpha_band.ckpt /u/pmihelj/models/models/VAEEG/low_beta_band.ckpt /u/pmihelj/models/models/VAEEG/high_beta_band.ckpt\
+--params 8 10 12 10 10  \
 --out_dir /u/pmihelj/results 
