@@ -262,7 +262,6 @@ from utils import get_path_list, get_raw, check_channel_names
 from deploy import load_models, get_orig_rec_latent
 import numpy as np
 import os 
-from time import time
 import gc
 
 save_norm = "C:/Users/Pietro/Desktop/DS_seiz/normal/"
@@ -279,11 +278,11 @@ for i,norm in enumerate(normal_paths):
     raw_norm = get_raw(norm)
     check_channel_names(raw_norm, verbose=False)
     eeg_norm = raw_norm.get_data()
-    _, _, latent_norm = get_orig_rec_latent(raw=eeg_norm, model=model, fs=256)
+    pi, pj, latent_norm = get_orig_rec_latent(raw=eeg_norm, model=model, fs=256)
     base_name = os.path.splitext(os.path.basename(norm))[0]
     np.save(os.path.join(save_norm, base_name + '.npy'), latent_norm)
     print(f'Salvato file {norm}')
-    del raw_norm, eeg_norm, latent_norm
+    del raw_norm, eeg_norm, latent_norm, pi, pj
     gc.collect()
 print('Fine salvataggio normali')
 print('############################################################################')
@@ -294,10 +293,10 @@ for j,seiz in enumerate(seizure_paths):
     raw_seiz = get_raw(seiz)
     check_channel_names(raw_seiz, verbose=False)
     eeg_seiz = raw_seiz.get_data()
-    _, _, latent_seiz = get_orig_rec_latent(raw=eeg_seiz, model=model, fs=256)
+    ti, tj, latent_seiz = get_orig_rec_latent(raw=eeg_seiz, model=model, fs=256)
     np.save(os.path.join(save_seiz, base_name + '.npy'), latent_seiz)
     print(f'Salvato file {seiz}')
-    del raw_seiz, eeg_seiz, latent_seiz
+    del raw_seiz, eeg_seiz, latent_seiz, ti, tj
     gc.collect()
 print('Fine salvataggio seizure')
 print('############################################################################')

@@ -240,27 +240,44 @@ for raw_path, start, end in tqdm(zip(raw_paths, seizures_starts, seizures_ends))
 
 
 
-save_norm = 'D:/dataset_seizure/normal/'
-save_seiz = 'D:/dataset_seizure/abnormal/'
+save_norm = "C:/Users/Pietro/Desktop/DS_seiz/normal/"
+save_seiz = "C:/Users/Pietro/Desktop/DS_seiz/abnormal/"
 os.makedirs(save_norm, exist_ok=True)
 os.makedirs(save_seiz, exist_ok=True)
-normal_paths = get_path_list("D:/seizure_dataset/normal", f_extensions=['.edf'], sub_d=True)
-seizure_paths = get_path_list("D:/seizure_dataset/seizure", f_extensions=['.edf'], sub_d=True)
+normal_paths = get_path_list("C:/Users/Pietro/Desktop/seizure_dataset/normal", f_extensions=['.edf'], sub_d=True)
+print('Caricamento modelli')
 model = load_models(model='VAEEG', save_files=['models/VAEEG/delta_band.ckpt', 'models/VAEEG/theta_band.ckpt', 'models/VAEEG/alpha_band.ckpt', 'models/VAEEG/low_beta_band.ckpt', 'models/VAEEG/high_beta_band.ckpt'], params=[[8], [10], [12], [10], [10]])
-for norm, seiz in tqdm(zip(normal_paths,seizure_paths),desc='Salvataggio dati'):
+print('Modelli caricati')
+print('###########################################################################')
+print('Inizio salvataggio normali:')
+for i,norm in enumerate(normal_paths):
     raw_norm = get_raw(norm)
-    raw_seiz = get_raw(seiz)
     check_channel_names(raw_norm, verbose=False)
-    check_channel_names(raw_seiz, verbose=False)
     eeg_norm = raw_norm.get_data()
-    eeg_seiz = raw_seiz.get_data()
-    _, _, latent_norm = get_orig_rec_latent(raw=eeg_norm, model=model, fs=256)
-    _, _, latent_seiz = get_orig_rec_latent(raw=eeg_seiz, model=model, fs=256)
+    pi, pj, latent_norm = get_orig_rec_latent(raw=eeg_norm, model=model, fs=256)
     base_name = os.path.splitext(os.path.basename(norm))[0]
     np.save(os.path.join(save_norm, base_name + '.npy'), latent_norm)
-    np.save(os.path.join(save_seiz, base_name + '.npy'), latent_seiz)
-    del raw_norm, raw_seiz, eeg_norm, eeg_seiz, latent_norm, latent_seiz
+    print(f'Salvato file {norm}')
+    del raw_norm, eeg_norm, latent_norm, pi, pj
     gc.collect()
+print('Fine salvataggio normali')
+print('############################################################################')
+
+print('Inizio salvataggio seizure')
+seizure_paths = get_path_list("C:/Users/Pietro/Desktop/seizure_dataset/seizure", f_extensions=['.edf'], sub_d=True)
+for j,seiz in enumerate(seizure_paths):
+    raw_seiz = get_raw(seiz)
+    check_channel_names(raw_seiz, verbose=False)
+    eeg_seiz = raw_seiz.get_data()
+    ti, tj, latent_seiz = get_orig_rec_latent(raw=eeg_seiz, model=model, fs=256)
+    np.save(os.path.join(save_seiz, base_name + '.npy'), latent_seiz)
+    print(f'Salvato file {seiz}')
+    del raw_seiz, eeg_seiz, latent_seiz, ti, tj
+    gc.collect()
+print('Fine salvataggio seizure')
+print('############################################################################')
+print(f'File normali salvati: {i}, File seizure salvati: {j}')
+print('Done')
 
 
 

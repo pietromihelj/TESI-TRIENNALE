@@ -1,25 +1,24 @@
 import torch 
 import torch.nn as nn
-import os 
+import mne
 from sklearn import metrics
-from torch.utils.data import DataLoader, Dataset
-from utils import get_path_list, parse_summary_txt, get_raw
-
+from torch.utils.data import DataLoader, Dataset, random_split
+from utils import get_path_list, stride_data
 import numpy as np
-import pandas as pd
+import gc
+from tqdm import tqdm
 
 SAVE_FILE = "./SubAnalyze_SeizureDetection/Model/Models"
 
 """
-Nella parte di codice seguente vado a creare il dato in forma (clip,label)
+Nella parte di codice seguente vado a creare il dato in forma (clip,label), il dataset ed il dataloader. poi alleno e testoun mdodello NN
+misto linear LSTM. 
 """
-paths_eeg = get_path_list("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.edf'], sub_d=True)
-paths_txt = paths = get_path_list("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.txt'], sub_d=True)
-
-for path in paths_eeg:
-    raw = get_raw(path)
-    raw = raw.pick(list(dict.fromkeys(raw.ch_names)))
-
+def load_edf(file_path):
+    raw = mne.io.read_raw_edf(file_path, preload=True, verbose=False)
+    data = raw.get_data()  
+    data_concat = data.flatten()
+    return data_concat
 
 def initialize_weights(model):
     for m in model.modules():
@@ -46,27 +45,31 @@ def initialize_weights(model):
                     nn.init.constant_(parma, 2)
     return model
 
-class Dataset_predata(Dataset):
-    def __init__(self, mode, ds):
-        self.data = np.load(f"./SubAnalyze_SeizureDetection/Model/dataset/{mode}_{ds}.npz", allow_pickle=True)
-        self.data_2 = np.load(f"./SubAnalyze_SeizureDetection/Model/dataset/{mode}_eval.npz", allow_pickle=True)
-        self.label = self.data["label"][:, np.newaxis]
-        self.data = self.data["data"]
-        self.label_2 = self.data_2["label"][:, np.newaxis]
-        self.data_2 = self.data_2["data"]
+class EEG_SEIZ_Dataset(Dataset):
+    def __init__(self, norm_paths, seiz_paths, n_per_seg=250, n_overlap=0):
+        self.samples = []
+        self.labels = []
 
+        for path in norm_paths:
+            data = load_edf(path)
+            clips = stride_data(data,n_per_seg=n_per_seg, n_overlap=n_overlap)
+            self.samples.append(clips)
+            self.labels.append(np.zeros(len(clips)))
         
-        self.data = np.concatenate([self.data, self.data_2], axis=0)
-        self.label = np.concatenate([self.label, self.label_2], axis=0)
+        for path in seiz_paths:
+            data = load_edf(path)
+            clips = stride_data(data,n_per_seg=n_per_seg, n_overlap=n_overlap)
+            self.samples.append(clips)
+            self.labels.append(np.ones(len(clips)))
+        
+        self.samples = np.concatenate(self.samples, axis=0)
+        self.labels = np.concatenate(self.labels, axis=0)
 
-        print(f"{mode}_{ds}", sum(self.label == 0) , sum(self.label == 1))
-
-    
     def __len__(self):
-        return self.data.shape[0]
+        return len(self.samples)
     
-    def __getitem__(self, index):
-        return self.data[index], self.label[index]
+    def __getitem__(self, idx):
+        return torch.tensor(self.samples[idx], dtype=torch.float32), torch.tensor(self.labels[idx], dtype=torch.float32)
 
 class Conv1dLayer(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride,
@@ -185,11 +188,12 @@ def get_metrics(predict, label, class_num=2):
     acc_total = metrics.accuracy_score(label, predict)
     return metric_cm, np.round(np.array([acc0, acc1, acc_total]), 3)
 
-def train_model(model, n_epoch, trainloader, dataloader, lr, device='cuda', weigth = 0.15):
+def train_model(model, n_epoch, trainloader, testloader, lr, device='cuda', weigth = 0.15):
 
     model = SeizureDetect_Model().to(device)
     model.apply(initialize_weights)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    total_losses = []
     for e in range(n_epoch):
         model.train()
         tr_losses = []
@@ -198,22 +202,21 @@ def train_model(model, n_epoch, trainloader, dataloader, lr, device='cuda', weig
         for tr_data, labels in trainloader:
             pred = model(tr_data.float.to(device))
             loss = bce_Loss(pred, labels.float().to(device), weight=weigth, device=device)
-
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             tr_losses.append(loss)
             _, accs = get_metrics(pred.to("cpu").detach().numpy(), labels.to("cpu").detach().numpy(), class_num=2)
             tr_accs.append(accs[2])
-        
-        print(f'Epoch: {e}, Loss: {torch.tensor(tr_losses).mean()}, Accuracy: {torch.tensor(tr_accs).mean()}')
+        total_losses.append(np.mean(tr_losses))
+        print(f'Epoch: {e}, Loss: {np.mean(tr_losses)}, Accuracy: {np.mean(tr_accs)}')
     
     model.eval()
     te_CMs = []
     accs = []
     rec_seiz = []
     rec_norm = []
-    for te_data, labels in dataloader:
+    for te_data, labels in testloader:
         te_pred = model(te_data.float().to(device))
         te_cm, te_accs = get_metrics(te_pred.to('cpu').detach().numpy(), labels.to('cpu').detach().numpy(), class_num=2)
         te_CMs.append(te_cm)
@@ -224,4 +227,101 @@ def train_model(model, n_epoch, trainloader, dataloader, lr, device='cuda', weig
     print(f'Test accuracy:{torch.tensor(accs).mean()}, recall norm: {torch.tensor(rec_norm).mean()}, recall seizure: {torch.tensor(rec_seiz).mean()}')
     print(f'Confuzion Metrics: {torch.tensor(te_CMs).mean(dim=0)}')
 
-    return torch.tensor(te_CMs).mean(dim=0), torch.tensor(accs).mean(), torch.tensor(rec_norm).mean(), torch.tensor(rec_seiz).mean()
+    return np.mean(te_CMs, axis=0), np.mean(accs), np.mean(rec_norm), np.mean(rec_seiz), total_losses
+
+
+normal_dir = "D:/seizure_dataset/normal"
+seizure_dir = "D:/seizure_dataset/seizure"
+
+normal_paths = get_path_list(normal_dir, f_extensions=['.edf'], sub_d=True)
+seizure_paths = get_path_list(seizure_dir, f_extensions=['.edf'], sub_d=True)
+
+dataset = EEG_SEIZ_Dataset(norm_paths=normal_paths, seiz_paths=seizure_paths, n_per_seg=50)
+
+train_size = int(0.8*len(dataset))
+test_size = len(dataset) - train_size
+train_ds, test_ds = random_split(dataset, [train_size, test_size])
+torch.save(train_ds, "D:/Train_seizure_dataset.pt")
+torch.save(test_ds, 'D:/Test_seizure_dataset.pt')
+trainloader = DataLoader(train_ds, batch_size=32, shuffle=True)
+testloader = DataLoader(test_ds, batch_size=32, shuffle=False)
+model = SeizureDetect_Model()
+confmatr, accs, recall_norm, recall_seiz = train_model(model, 100, trainloader, testloader, 0.001)
+np.save('seiz_detec/conf_matr.npy', confmatr)
+np.save('seiz_detec/accs.npy', accs)
+np.save('seiz_detec/recall_norm.npy', recall_norm)
+np.save('seiz_detec/recall_seiz.npy', recall_seiz)
+
+"""
+Nella seguente parte di codice paragono le distribuzioni latenti tra background e seizure
+"""
+
+normal_dir = "D:/seizure_dataset/normal"
+seizure_dir = "D:/seizure_dataset/seizure"
+
+normal_paths = get_path_list(normal_dir, f_extensions=['.edf'], sub_d=True)
+seizure_paths = get_path_list(seizure_dir, f_extensions=['.edf'], sub_d=True)
+
+clips_norm = []
+print('Normal Processing')
+for path in tqdm(normal_paths):
+    raw = mne.io.read_raw_edf(path, preload=True, verbose=False)
+    data = raw.get_data()  
+    clip = stride_data(data,n_per_seg=50)
+    clips_norm.append(np.squeeze(clip).mean(axis=0))
+    del raw, data, clip
+    gc.collect()
+clips_norm = np.concatenate(clips_norm, axis=0)
+
+print('Seizure Processing')
+clips_seiz = []
+for path in tqdm(seizure_paths):
+    raw = mne.io.read_raw_edf(path, preload=True, verbose=False)
+    data = raw.get_data()  
+    clip = stride_data(data,n_per_seg=50)
+    clips_seiz.append(np.squeeze(clip).mean(axis=0))
+    del raw, data, clip
+    gc.collect()
+clips_seiz = np.concatenate(clips_seiz, axis=0)
+
+
+print('Distribution comparison')
+distributions = {}
+for i in range(50):
+    latent_norm = clips_norm[:, i]
+    latent_seiz = clips_seiz[:, i]
+    distributions[f'latent_{i}'] = {'normal': latent_norm, 'seizure': latent_seiz}
+
+from scipy.stats import mannwhitneyu
+p_values = []
+for i in range(50):
+    norm_vals = distributions[f'latent_{i}']['normal']
+    seiz_vals = distributions[f'latent_{i}']['seizure']
+    stat, p = mannwhitneyu(norm_vals, seiz_vals)
+    print(f"Latent {i}: p-value={p}")
+    p_values.append(p)
+np.save('seiz_detec/p_values.npy', p_values)
+
+import matplotlib.pyplot as plt
+print('Distribution plotting')
+n_latent = 50
+n_rows, n_cols = 5, 10  
+fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 10)) 
+for i in range(n_latent):
+    row = i // n_cols
+    col = i % n_cols
+    ax = axes[row, col]
+    ax.hist(distributions[f'latent_{i}']['normal'], bins=30, alpha=0.5, label='normal')
+    ax.hist(distributions[f'latent_{i}']['seizure'], bins=30, alpha=0.5, label='seizure')
+    ax.set_title(f'Latent {i}', fontsize=8)
+    ax.tick_params(axis='both', which='major', labelsize=6)
+
+plt.savefig("seiz_detec/latent_distributions.png", dpi=300)
+plt.tight_layout()
+plt.show()
+
+
+
+
+
+
