@@ -90,7 +90,7 @@ def get_raw(f_path, preload=False):
     check_type('f_path', f_path, [str])
     if os.path.isdir(f_path):
         raise KeyError('can`t identify %s.'%f_path)
-    return mne.io.read_raw_edf(f_path, preload= preload,verbose=False)
+    return mne.io.read_raw_edf(f_path, preload=preload,verbose=False)
 
 def find_artefacts_1d(mask, a_th=0):
     #controllo dei tipi in input

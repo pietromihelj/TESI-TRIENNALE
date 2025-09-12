@@ -1,0 +1,15 @@
+1- trasforma seizure dataset con VAEEG
+2- trasforma age dataset con VAEEG
+3- trasforma sleep dataset con vaeeg
+
+4- age reg con fast ICA
+5- age reg con KPCA
+6- age reg con VAEEG
+
+7- seizure detect con PCA 
+8- seizure detect con fast ICA
+9- seizure detect con KPCA
+10- seizure detect con VAEEG
+
+11- do sleep classification script
+12- train with all models

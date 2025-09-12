@@ -46,7 +46,7 @@ class DeployVAEEG():
         #sistemo la frequenza di samplinf
         if fs != 250:
             ratio = 250/fs
-            signal = mne.filter.resample(signal, ratio, verbose=False)
+            signal = mne.filter.resample(signal.astype(np.float64), ratio, verbose=False)
         signal = signal - signal.mean(axis=0, keepdims=True)
         mth = int(m_len*fs)
         start = int(drop*fs)
@@ -111,7 +111,7 @@ class DeployBaseline():
         #sistemo la frequenza
         if fs != 250:
             ratio = 250/fs
-            signal = mne.filter.resample(signal, ratio, verbose=False)
+            signal = mne.filter.resample(signal.astype(np.float64), ratio, verbose=False)
         signal = signal - signal.mean(axis=0, keepdims=True)
         mth = int(m_len*fs)
         start = int(drop*fs)

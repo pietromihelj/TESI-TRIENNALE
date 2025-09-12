@@ -34,7 +34,7 @@ def train_fast_ICA(in_dir, out_dir, start_time, end_time, alghoritm, fun):
 def train_KPCA(in_dir, out_dir, start_time, end_time, kernel, alpha, n_comp):
     #prendo il path dove salvero l'oggetto
     #creo il path alla directory di output
-    target_dir = os.path.join(out_dir, 'k_pca',kernel, str(alpha))
+    target_dir = os.path.join(out_dir, '_k_pca_',kernel, '_'+str(alpha))
     #se non esiste la creo
     if not os.path.isdir(target_dir):
         os.makedirs(target_dir, exist_ok=True) 
@@ -58,7 +58,7 @@ def train_KPCA(in_dir, out_dir, start_time, end_time, kernel, alpha, n_comp):
                                  ('final_pca', PCA(n_components=z_dims))
                                 ])
         else:
-            raise Exception('kerne non valido')
+            raise Exception('kernel non valido')
         kica = pipeline.fit(tr_data)
         pickle.dump(kica,f)
 

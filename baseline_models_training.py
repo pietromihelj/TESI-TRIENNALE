@@ -17,6 +17,7 @@ clip_len = otps.clip_len
 start_time = 0
 end_time = 250
 
+"""
 print('DEBUG: inizio training fast-ica')
 alg = ['parallel', 'deflation']
 fun = ['logcosh', 'exp', 'cube']
@@ -27,6 +28,7 @@ for a in alg:
 
 print('DEBUG: inizio train pca')
 train_PCA(in_dir=in_dir, out_dir=out_dir, start_time=start_time, end_time=end_time)
+"""
 
 print('DEBUG: inizo train k-pca')
 kernel = [ 'rbf', 'poly', 'sigmoid']
