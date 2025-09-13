@@ -1,0 +1,17 @@
+2- controllo e eventuale ritrasformazione di seizure
+3- trasforma sleep dataset con vaeeg
+
+5- age reg con KPCA
+
+7- seizure detect con PCA 
+8- seizure detect con fast ICA
+9- seizure detect con KPCA
+10- seizure detect con VAEEG
+
+11- do sleep classification script
+12- train with all models
+
+
+age_reg_scale = 1.3e+8
+seizure_sacel = 2e+11
+sleep_scale = 0.0014065

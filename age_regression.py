@@ -1,5 +1,4 @@
 from sklearn.linear_model import Lasso, LinearRegression, Ridge
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import  mean_absolute_error, r2_score
 from deploy import load_models, get_orig_rec_latent
@@ -11,7 +10,7 @@ import os
 import argparse
 import warnings
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.preprocessing import StandardScaler
+
 
 
 with warnings.catch_warnings(record=True) as w:
@@ -19,7 +18,7 @@ with warnings.catch_warnings(record=True) as w:
 w_len = 0
 
 parser = argparse.ArgumentParser(description='Age Regression')
-parser.add_argument('--model_names', nargs='+', type=str, required=True, help='model_names')
+parser.add_argument('--model_names', nargs='+',type=str, required=True, help='model_names')
 parser.add_argument('--model_paths', nargs='+', type=str, required=True, help='model_paths')
 parser.add_argument('--params', nargs='+', type=list, required=False, help='params', default=[1])
 parser.add_argument('--out_dir', type=str, required=True, help='out_dir')
@@ -56,11 +55,10 @@ predictors = [
     ("LinearRegression", LinearRegression()),
     ("Lasso", Lasso(alpha=1.0, max_iter=50000)),
     ("Ridge", Ridge(alpha=1.0)),
-    ("RandomForest", RandomForestRegressor(n_estimators=50,max_features='sqrt', n_jobs=-1, random_state=42))
 ]
 
 results = {}
-scaler = StandardScaler()
+latents_for_r2 = []
 for q,(model_name, save_f, param) in enumerate(zip(model_names, model_paths, params)):
 
     print(f'Regressione con variabili del modello: {model_name}')
@@ -73,7 +71,10 @@ for q,(model_name, save_f, param) in enumerate(zip(model_names, model_paths, par
         if lat is None:
             print('error code 0 for: ', j, '° eeg')
             continue
+        #if np.any((np.isinf)):
+        #    print('error code inf for:', j,'° eeg')
         #aggiugo alle clip il sid dell'eeg
+        latents_for_r2.append(np.median(lat, axis=1))
         latents.append(np.hstack([lat.reshape(-1,50), np.full((lat.reshape(-1,50).shape[0],1),j)]))
     print('Latenti create: ', len(latents), ' -- ', latents[0].shape)
     #ottengo un unico array con tutte le clip. in questo modo diventano il dato singolo
@@ -99,7 +100,6 @@ for q,(model_name, save_f, param) in enumerate(zip(model_names, model_paths, par
             te_Y = clip_ages[te_idx]
             te_sids = np.array([int(eeg[-1]) for eeg in latents[te_idx]])
             #alleno il modello
-            tr_x = scaler(tr_X)
             pred.fit(tr_X, tr_Y)
             for warn in w:
                 if issubclass(warn.category, ConvergenceWarning) and len(w) > w_len:
@@ -139,18 +139,7 @@ Prendo come valore delle variabili latenti per un soggetto la mediana dei valori
 for model_name, model_file, param in zip(model_names, model_paths, params):
     model = load_models(model=model_name, save_files=model_file, params=param)
     pccs = []
-    latent = []
-    for i,raw in enumerate(raws):
-        _,_,lat = get_orig_rec_latent(raw, model)
-        #latent ha forma [ch_num, clip_num, 50]
-        if lat is None:
-            print('error code 0')
-            del ages[i]
-            continue
-        #calcolo la mediana lungo l'asse temporale per ogni soggetto e per ogni canale
-        latent.append(np.median(lat, axis=1))
-        #per ogni soggetto calcolo il pcc su ogni dimensione latente lungo ogni canale
-    latent = np.array(latent)
+    latent = np.array(latents_for_r2)
     _,ch_num, latent_dim = latent.shape
     pcc = np.zeros((ch_num, latent_dim))
     for ch in range(ch_num):

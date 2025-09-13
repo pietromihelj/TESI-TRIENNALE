@@ -86,7 +86,7 @@ def accept_file(dir, f_name, ext):
     cond_2 = os.path.splitext(f_name)[1].lower() in ext
     return cond_1 and cond_2
 
-def get_raw(f_path, preload=False):
+def get_raw(f_path, start=None, end=None,preload=False):
     check_type('f_path', f_path, [str])
     if os.path.isdir(f_path):
         raise KeyError('can`t identify %s.'%f_path)

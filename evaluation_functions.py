@@ -239,14 +239,25 @@ def evaluate(data_dir, model, model_files, params, cuts, f_extensions=['.edf']):
     pears_is = []
     nrmse_s = []
     for o,r in zip(origis, recs):
-        print(o.shape,r.shape)
-        pears_is.append(pearsonr(o.flatten(),r.flatten()))
-        nrmse_s.append(NRMSE(o.flatten(),r.flatten()))
+        inf_orig = np.isinf(o).any(axis=0)
+        inf_rec = np.isinf(r).any(axis=0)
+        inf_combined = inf_orig | inf_rec
+        valid_columns_mask = ~inf_combined
+        o_cleaned = o[:, valid_columns_mask]
+        r_cleaned = r[:, valid_columns_mask]
+        pears_is.append(pearsonr(o_cleaned.flatten(),r_cleaned.flatten()))
+        nrmse_s.append(NRMSE(o_cleaned.flatten(),r_cleaned.flatten()))
     
     print('CHECKPOINT: Inizio calcolo ampiezza media')
     ch_ampl = [[],[]]
     for o,r in zip(origis, recs):
-        ch_ampl[0].append(np.mean(np.abs(o),axis=1))
-        ch_ampl[1].append(np.mean(np.abs(r), axis=1))
+        inf_orig = np.isinf(o).any(axis=0)
+        inf_rec = np.isinf(r).any(axis=0)
+        inf_combined = inf_orig | inf_rec
+        valid_columns_mask = ~inf_combined
+        o_cleaned = o[:, valid_columns_mask]
+        r_cleaned = r[:, valid_columns_mask]
+        ch_ampl[0].append(np.mean(np.abs(o_cleaned),axis=1))
+        ch_ampl[1].append(np.mean(np.abs(r_cleaned), axis=1))
     
     return pcc_mae[0], pvl_mae[0], pc_mae, np.mean(np.array(pears_is)), np.mean(np.array(nrmse_s)), np.mean(np.stack(ch_ampl[0]), axis=0), np.mean(np.stack(ch_ampl[1], axis=0))

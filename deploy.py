@@ -35,7 +35,7 @@ class DeployVAEEG():
         OUTPUT: torch tensor della forma=[ch_num, clip_num, bands_num, clip_len]
         """
         #inizializzo scala e bande
-        scale = 1.0e6
+        scale = 2e+11
         BANDS =  [("delta", (1.0, 4.0)),
                   ("theta", (4.0, 8.0)),
                   ("alpha", (8.0, 13.0)),
@@ -106,8 +106,8 @@ class DeployBaseline():
         OUTPUT: numpy array segnale segmentato in clip da 1 secondo [ch_num, clip_num, clip_len]
         """
         #estraggo i dati e li scalo
-        scale = 1.0e6
-        #signal = signal * scale
+        scale = 1.3e+8
+        signal = signal * scale
         #sistemo la frequenza
         if fs != 250:
             ratio = 250/fs
@@ -140,7 +140,8 @@ class DeployBaseline():
         #ricavo le latenti per ogni clip
         z = self.model.transform(inputs)
         #prendo le ricostruzioni per ogni clip
-        rec = self.model.inverse_transform(z)
+        #rec = self.model.inverse_transform(z)
+        rec = np.zeros((1,3))
         return rec.flatten(), z
 
 def get_orig_rec_latent(raw, model, fs=250):
@@ -151,6 +152,8 @@ def get_orig_rec_latent(raw, model, fs=250):
     assert isinstance(raw, np.ndarray), 'input deve essere una array numpy'
     if isinstance(model, DeployVAEEG):
         orig = model.preprocess(signal=raw, fs=fs)
+        print('fine preprocess')
+        #print(f'Check post preprocess. Massimo: {np.max(orig)}, mean: {np.mean(orig)}, median: {np.median(orig)}')
         #origin diventa una lista di forma [ch_num, clip_num, bands_num, clip_len]
         if orig is None:
             return None, None, None 
@@ -163,7 +166,7 @@ def get_orig_rec_latent(raw, model, fs=250):
             ch_latent.append(c_l.detach().cpu().numpy())
             #c,l ha form [clip_num, latent_len]
         rec = np.array(ch_rec).reshape(len(ch_rec), 1,-1)
-        latent= np.stack(ch_latent, axis=0)
+        latent = np.stack(ch_latent, axis=0)
         orig=orig.transpose(1,2).flatten(2)
         orig=orig.detach().cpu().numpy()
         #ottengo una array numpy di forma [ch_num, band_num, temp_len]

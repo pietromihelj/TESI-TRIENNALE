@@ -258,22 +258,21 @@ print('Durata totale delle seizure: ', np.sum(total_df['Seizure Duration (s)']/6
 """
 
 
-from utils import get_path_list, get_raw, check_channel_names
+from utils import get_path_list, get_raw, check_channel_names, stride_data
 from deploy import load_models, get_orig_rec_latent
 import numpy as np
 import os 
 import gc
-
-save_norm = "D:/DS_seiz/normal/"
-save_seiz = "D:/DS_seiz/abnormal/"
+from tqdm import tqdm
+"""
+save_norm = "D:/age_latent"
 os.makedirs(save_norm, exist_ok=True)
-os.makedirs(save_seiz, exist_ok=True)
-normal_paths = get_path_list("D:/seizure_dataset/normal", f_extensions=['.edf'], sub_d=True)
+normal_paths = get_path_list("D:/nmt_scalp_age_dataset", f_extensions=['.edf'], sub_d=True)
 print('Caricamento modelli')
 model = load_models(model='VAEEG', save_files=['models/VAEEG/delta_band.ckpt', 'models/VAEEG/theta_band.ckpt', 'models/VAEEG/alpha_band.ckpt', 'models/VAEEG/low_beta_band.ckpt', 'models/VAEEG/high_beta_band.ckpt'], params=[[8], [10], [12], [10], [10]])
 print('Modelli caricati')
 print('###########################################################################')
-print('Inizio salvataggio normali:')
+print('Inizio salvataggio EEG:')
 for i,norm in enumerate(normal_paths):
     raw_norm = get_raw(norm)
     check_channel_names(raw_norm, verbose=False)
@@ -286,24 +285,112 @@ for i,norm in enumerate(normal_paths):
     print(f'Salvato file {norm}')
     del eeg_norm, latent_norm, pi, pj
     gc.collect()
-print('Fine salvataggio normali')
+print('Fine salvataggio EEG')
+print('############################################################################')
+"""
+"""
+save_dir = 'D:/sleep_latent'
+os.makedirs(save_dir, exist_ok=True)
+eeg_paths = get_path_list("D:/nchsdb/sleep_data", f_extensions=['.edf'], sub_d=True)
+model = load_models(model='VAEEG', save_files=['models/VAEEG/delta_band.ckpt', 'models/VAEEG/theta_band.ckpt', 'models/VAEEG/alpha_band.ckpt', 'models/VAEEG/low_beta_band.ckpt', 'models/VAEEG/high_beta_band.ckpt'], params=[[8], [10], [12], [10], [10]])
+print('Modelli caricati')
+print('###########################################################################')
+print('Inizio salvataggio EEG:')
+for path in eeg_paths:
+    raw = get_raw(path)
+    check_channel_names(raw, verbose=False)
+    base_name = os.path.splitext(os.path.basename(path))[0]
+    for start, end, data in raw.iter_raw(250000):
+        pi, pj, latent = get_orig_rec_latent(raw=data, model=model, fs=256)
+        if  latent is None: 
+          print('errore code 0')
+          del latent, data
+          gc.collect()
+          continue
+        if np.any(np.isinf(latent)):
+            num_clip = latent.shape[1]
+            print(f'Check post latent. Inf: {np.sum(np.isinf(latent))}, Nan: {np.any(np.isnan(latent))}, Max eeg: {np.max(data)}, Shape: {latent.shape}')
+            bad_mask = np.any(np.isnan(latent) | np.isinf(latent), axis=(0,2)) 
+            num_bad_clips = np.sum(bad_mask)
+            print(f'Numero di clip corrotte: {num_bad_clips}')
+            latent = latent[:, ~bad_mask, :]
+            print(f'Final shape: {latent.shape}')
+            if latent.shape[1] < num_clip/2:
+                print(f'EEG troppo corrotto: {path}. saltato')
+                del data, latent, pi, pj
+                gc.collect()
+                continue
+        np.save(os.path.join(save_dir, base_name + f'{start}_{end}.npy'), latent)
+        print(f'Salvato file {path}_{start}_{end}')
+        del pi, pj, data, latent
+        gc.collect()
+    raw.close()
+    gc.collect()
+print('Fine salvataggio EEG')
+print('############################################################################')
+"""
+"""
+paths = get_path_list("D:/seizure_dataset/normal", f_extensions=['.edf'], sub_d=True)
+save_norm = "D:/seizure_latent/normal"
+os.makedirs(save_norm, exist_ok=True)
+model = load_models(model='VAEEG', save_files=['models/VAEEG/delta_band.ckpt', 'models/VAEEG/theta_band.ckpt', 'models/VAEEG/alpha_band.ckpt', 'models/VAEEG/low_beta_band.ckpt', 'models/VAEEG/high_beta_band.ckpt'], params=[[8], [10], [12], [10], [10]])
+print('Modelli caricati')
+print('###########################################################################')
+for path in paths:
+    raw_norm = get_raw(path)
+    check_channel_names(raw_norm, verbose=False)
+    eeg_norm = raw_norm.get_data().astype(np.float32)
+    raw_norm.close()
+    del raw_norm
+    pi, pj, latent_norm = get_orig_rec_latent(raw=eeg_norm, model=model, fs=200)
+    if  latent_norm is None: 
+          print('errore code 0')
+          continue
+    infi = np.isinf(latent_norm)
+    if np.any(infi):
+            num_clip = latent_norm.shape[1]
+            print(f'Check post latent. Inf: {np.sum(infi)}, Nan: {np.any(np.isnan(latent_norm))}, Max eeg: {np.max(eeg_norm)}, Shape: {latent_norm.shape}')
+            bad_mask = np.any(infi , axis=(0,2)) 
+            num_bad_clips = np.sum(bad_mask)
+            print(f'Numero di clip corrotte: {num_bad_clips}')
+            latent_norm = latent_norm[:, ~bad_mask, :]
+            print(f'Final shape: {latent_norm.shape}')
+            if latent_norm.shape[1] < num_clip/2:
+                print(f'EEG troppo corrotto: {path}. saltato')
+                del eeg_norm, latent_norm, pi, pj
+                gc.collect()
+                continue
+    base_name = os.path.splitext(os.path.basename(path))[0]
+    np.save(os.path.join(save_norm, base_name + '.npy'), latent_norm)
+    print(f'Salvato file {path}')
+    del eeg_norm, latent_norm, pi, pj
+    gc.collect()
+print('Fine salvataggio EEG')
 print('############################################################################')
 
-print('Inizio salvataggio seizure')
-seizure_paths = get_path_list("D:/seizure_dataset/normal", f_extensions=['.edf'], sub_d=True)
-for j,seiz in enumerate(seizure_paths):
-    raw_seiz = get_raw(seiz)
-    check_channel_names(raw_seiz, verbose=False)
-    eeg_seiz = raw_seiz.get_data().astype(np.float32)
-    raw_seiz.close()
-    del raw_seiz
-    ti, tj, latent_seiz = get_orig_rec_latent(raw=eeg_seiz, model=model, fs=256)
-    base_name = os.path.splitext(os.path.basename(seiz))[0]
-    np.save(os.path.join(save_seiz, base_name + '.npy'), latent_seiz)
-    print(f'Salvato file {seiz}')
-    del eeg_seiz, latent_seiz, ti, tj
+"""
+
+
+save_norm = "D:/seizure_latent/normal"
+os.makedirs(save_norm, exist_ok=True)
+normal_paths = get_path_list("D:/seizure_dataset/normal", f_extensions=['.edf'], sub_d=True)
+print('Caricamento modelli')
+model = load_models(model='VAEEG', save_files=['models/VAEEG/delta_band.ckpt', 'models/VAEEG/theta_band.ckpt', 'models/VAEEG/alpha_band.ckpt', 'models/VAEEG/low_beta_band.ckpt', 'models/VAEEG/high_beta_band.ckpt'], params=[[8], [10], [12], [10], [10]])
+print('Modelli caricati')
+print('###########################################################################')
+print('Inizio salvataggio EEG:')
+for i,norm in enumerate(normal_paths):
+    raw_norm = get_raw(norm)
+    check_channel_names(raw_norm, verbose=False)
+    eeg_norm = raw_norm.get_data().astype(np.float32)
+    print(f'Dim file: {eeg_norm.shape}')
+    raw_norm.close()
+    del raw_norm
+    pi, pj, latent_norm = get_orig_rec_latent(raw=eeg_norm, model=model, fs=256)
+    base_name = os.path.splitext(os.path.basename(norm))[0]
+    np.save(os.path.join(save_norm, base_name + '.npy'), latent_norm)
+    print(f'Salvato file {norm}')
+    del eeg_norm, latent_norm, pi, pj
     gc.collect()
-print('Fine salvataggio seizure')
+print('Fine salvataggio EEG')
 print('############################################################################')
-print(f'File normali salvati: {i}, File seizure salvati: {j}')
-print('Done')
