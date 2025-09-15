@@ -1,7 +1,4 @@
-2- controllo e eventuale ritrasformazione di seizure
 3- trasforma sleep dataset con vaeeg
-
-5- age reg con KPCA
 
 7- seizure detect con PCA 
 8- seizure detect con fast ICA

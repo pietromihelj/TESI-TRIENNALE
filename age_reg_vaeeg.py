@@ -28,7 +28,7 @@ if not os.path.exists(out_dir):
 """
 Nella successiva parte di codice carico i dati e creo 2 liste contenenti la coppia eeg eta soggetto
 """
-path = get_path_list("D:age_latent", f_extensions=['.npy'], sub_d=True)
+path = get_path_list("C:/Users/Pietro/Desktop/age_eeg/rbf_10", f_extensions=['.npy'], sub_d=True)
 age_df = pd.read_csv("D:/nmt_scalp_age_dataset/Labels.csv")
 ages = []
 latents  = []
@@ -101,7 +101,7 @@ for name, pred in predictors:
         par_mae.append(mean_absolute_error(y_pred=y_pred, y_true=y_true))
         par_r2.append(r2_score(y_pred=y_pred, y_true=y_true))
     partial_res.append(((name+'_MAE', np.mean(par_mae)),(name+'_R2', np.mean(par_r2))))
-results['VAEEG'] = partial_res
+results['KernelPCA'] = partial_res
 
 rows = []
 for model_name, metrics_list in results.items():
@@ -121,7 +121,8 @@ df.to_csv(path, index = False)
 Nella successiva parte di codice calcolo il PCC tra le variabli latenti e le età.
 Prendo come valore delle variabili latenti per un soggetto la mediana dei valori latenti lungo la dimensione temporale 
 """
-path = get_path_list("D:age_latent", f_extensions=['.npy'], sub_d=True)
+"""
+path = get_path_list("C:/Users/Pietro/Desktop/age_eeg/rbf_0.1", f_extensions=['.npy'], sub_d=True)
 pccs = []
 lat_value = []
 for i,p in enumerate(path):
@@ -139,3 +140,4 @@ for ch in range(ch_num):
 pccs = np.array(pccs).mean(axis=0)
 df = pd.DataFrame(pcc, index=['FP1', 'FP2', 'F3', 'F4', 'FZ', 'F7', 'F8', 'P3', 'P4', 'PZ', 'C3', 'C4', 'CZ', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2'], columns=[f"latent_{d}" for d in range(pcc.shape[1])])
 df.to_csv(model_name+"_pearson_latent.csv", index=True)
+"""

@@ -28,9 +28,9 @@ def parse_list_of_lists(flat_list, separator):
 
 parser = argparse.ArgumentParser(description='Evaluate Model')
 parser.add_argument('--data_dir', type=str, required=True, help='data_dir')
-parser.add_argument('--model', type=str, required=True, help='model')
-parser.add_argument('--model_save_name', type=str, required=True, help='model_save_name')
-parser.add_argument('--model_save_files', nargs='+', type=str, required=True, help='models saves files')
+parser.add_argument('--model', type=str, required=False, help='model', default=None)
+parser.add_argument('--model_save_name', type=str, required=False, help='model_save_name', default=None)
+parser.add_argument('--model_save_files', nargs='+', type=str, required=False, help='models saves files', default=None)
 parser.add_argument('--params', nargs='+',type=str, required=False, help='params for models', default=[])
 parser.add_argument('--out_dir', type=str, required=True, help='out_dir')
 parser.add_argument('--cuts', nargs='+',type=int, required=False, help='cuts', default=[0,-1])
@@ -47,9 +47,6 @@ cuts = opts.cuts
 
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
-
-
-
 
 print(f'EVALUATION DEL MODELLO: {model_save_name}')
 pcc_con_mae, pvl_mae, pc_mae, pearson_mae, nrmse_mae, or_ampl, rec_ampl = ef.evaluate(data_dir=data_dir, model=model, model_files=model_save_files,params=param_list, cuts=cuts)
@@ -69,51 +66,3 @@ y_lab = ['PCC', 'NRMSE', 'Phase MAE', 'Correlation MAE', 'PVL MAE']
 df = pd.DataFrame({'metrics': values+[p,t]}, index = y_lab+['Mean Amplitude Difference', 'p-value'])
 save_path = os.path.join(out_dir, f'metrics_saves_{model_save_name}.csv')
 df.to_csv(save_path)
-
-"""
-ch_names = ['Fp1', 'Fp2', 'Fz', 'F3', 'F4', 'F7', 'F8', 'Cz', 'C3', 'C4', 'Pz', 'P3', 'P4', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
-info = mne.create_info(ch_names=ch_names, sfreq=250, ch_types='eeg')
-montage = mne.channels.make_standard_montage("standard_1020")
-info.set_montage(montage)
-evoked_orig = mne.EvokedArray(or_ampl[:, np.newaxis], info)
-evoked_rec = mne.EvokedArray(rec_ampl[:,np.newaxis], info)
-
-fig_map ,axes = plt.subplots(1,2, figsize=(3,6))
-im_o, cn_o = mne.viz.plot_topomap(evoked_orig.data[:, 0], evoked_orig.info,axes=axes[0],show=False,cmap='jet',contours=6,sensors=True)
-im_r, cn_r = mne.viz.plot_topomap(evoked_rec.data[:, 0], evoked_rec.info,axes=axes[1],show=False,cmap='jet',contours=6,sensors=True)
-for coll in axes[0].collections:
-    print(type(coll))
-    if isinstance(coll, matplotlib.collections.PathCollection):  # solo scatter
-        coll.set_sizes([10])  # aumenta la dimensione dei marker
-        coll.set_facecolor('k')            # colore pieno (nero)
-        coll.set_edgecolor('k')            # bordo nero
-        coll.set_alpha(1.0)
-for coll in axes[1].collections:
-    print(type(coll))
-    if isinstance(coll, matplotlib.collections.PathCollection):  # solo scatter
-        coll.set_sizes([10])  # aumenta la dimensione dei marker
-        coll.set_facecolor('k')            # colore pieno (nero)
-        coll.set_edgecolor('k')            # bordo nero
-        coll.set_alpha(1.0)
-axes[0].set_title('Ampiezza media originale')
-axes[1].set_title('Ampiezza media ricostruzioni')
-fig_map.colorbar(im_o, ax=axes, orientation='vertical', fraction=0.05, pad=0.05, label='Ampiezza', format='%.1f')
-plt.savefig(os.path.join(out_dir, 'amplitude_comparison.png'), dpi=400)
-plt.show()
-
-
-fig, axs = plt.subplots(2, 3, figsize=(12, 10))
-axs = axs.flatten()
-x = np.arange(len(models))
-for j, (vals, ax) in enumerate(zip(values, axs)):
-    ax.bar(x, vals, color='skyblue')
-    ax.set_xticks(x)
-    ax.set_xticklabels(models)
-    ax.set_ylabel(y_lab[j])
-    ax.set_title(titles[j])
-    for i, v in enumerate(vals):
-        ax.text(i, v, f"{v:.2f}", ha='center', va='bottom', fontsize=9)
-plt.tight_layout()
-plt.savefig(os.path.join(out_dir, 'metrics_comparison.png'), dpi=400)
-plt.show()
-"""

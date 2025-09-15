@@ -422,10 +422,7 @@ def to_monopolar(raw_bipolar, ref='average', ch_name_sep='-'):
     return raw_monopolar, max_diff
 
 def select_bipolar(raw):
-    ch_necessary = ['FP1', 'FP2', 'F3', 'F4', 'FZ',
-                'F7', 'F8', 'P3', 'P4', 'PZ',
-                'C3', 'C4', 'CZ', 'T3', 'T4',
-                'T5', 'T6', 'O1', 'O2']
+    ch_necessary = ['F3', 'F4', 'C3', 'C4', 'O1', 'O2', 'CZ']
     flag = False
 
     selected_chs = []
@@ -440,3 +437,6 @@ def select_bipolar(raw):
                 selected_chs.append(ch)
     return raw.pick(selected_chs), flag
 
+def strip_eeg_prefix(raw):
+    mapping = {ch: ch.replace('EEG ', '') for ch in raw.info['ch_names'] if ch.startswith('EEG ')}
+    raw.rename_channels(mapping)

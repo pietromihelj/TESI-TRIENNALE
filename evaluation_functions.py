@@ -10,14 +10,15 @@ from sklearn.metrics import root_mean_squared_error
 
 STANDARD_1020 =  ['FP1', 'FP2', 'FZ', 'F3', 'F4', 'F7', 'F8', 'CZ', 'C3', 'C4', 'PZ', 'P3', 'P4', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2']
 
-def NRMSE(x,y):
-    #calcolo manuale dell'nmsre
-    mean_x = np.mean(x)
-    if mean_x == 0:
-        return np.inf
-    rmse = root_mean_squared_error( x, y)
-    nrmse = rmse / mean_x
-    return np.abs(nrmse)
+def NRMSE_range(x, y):
+    """
+    Calcola l'NRMSE normalizzato per l'intervallo (range) del segnale originale.
+    """
+    range_x = np.max(x) - np.min(x)
+    if range_x == 0:
+        return 0.0
+    rmse = root_mean_squared_error(x, y)
+    return rmse / range_x
 
 class PhaseComparison():
     def __init__(self, orig_num):
@@ -212,6 +213,7 @@ def evaluate(data_dir, model, model_files, params, cuts, f_extensions=['.edf']):
     
     origis = []
     recs = []
+
     for orig, rec in zip(utils.get_path_list(data_dir+'/orig', f_extensions=['.npy']), utils.get_path_list(data_dir+'/rec', f_extensions=['.npy'])):
         origis.append(np.load(orig))
         recs.append(np.load(rec))
@@ -224,10 +226,17 @@ def evaluate(data_dir, model, model_files, params, cuts, f_extensions=['.edf']):
     cc = ConComparison()
     orig_pcc, orig_pvl, rec_pcc, rec_pvl = cc.work(origis, recs)
 
+    
+    
+
     pcc_mae = np.abs(orig_pcc - rec_pcc)
-    pcc_mae = pcc_mae.mean(axis=(0,2,3))
+    pcc_mae = pcc_mae.astype(float)
+    pcc_mae[np.isinf(pcc_mae)] = np.nan
+    pcc_mae = np.nanmean(pcc_mae,axis=(0,2,3))
     pvl_mae = np.abs(orig_pvl-rec_pvl)
-    pvl_mae = pvl_mae.mean(axis=(0,2,3))
+    pvl_mae = pvl_mae.astype(float)
+    pvl_mae[np.isinf(pvl_mae)] = np.nan
+    pvl_mae = np.nanmean(pvl_mae, axis=(0,2,3))
 
     print('CHECKPOINT: Fine comparazione connettività')
 
@@ -245,8 +254,14 @@ def evaluate(data_dir, model, model_files, params, cuts, f_extensions=['.edf']):
         valid_columns_mask = ~inf_combined
         o_cleaned = o[:, valid_columns_mask]
         r_cleaned = r[:, valid_columns_mask]
-        pears_is.append(pearsonr(o_cleaned.flatten(),r_cleaned.flatten()))
+        pears_is.append(pearsonr(o_cleaned.flatten(),r_cleaned.flatten())[0])
         nrmse_s.append(NRMSE(o_cleaned.flatten(),r_cleaned.flatten()))
+    pears_is = np.array(pears_is)
+    pears_is = pears_is.astype(float)
+    pears_is[np.isinf(pears_is)] = np.nan
+    nrmse_s = np.array(nrmse_s)
+    nrmse_s = nrmse_s.astype(float)
+    nrmse_s[np.isinf(nrmse_s)] = np.nan
     
     print('CHECKPOINT: Inizio calcolo ampiezza media')
     ch_ampl = [[],[]]
@@ -259,5 +274,11 @@ def evaluate(data_dir, model, model_files, params, cuts, f_extensions=['.edf']):
         r_cleaned = r[:, valid_columns_mask]
         ch_ampl[0].append(np.mean(np.abs(o_cleaned),axis=1))
         ch_ampl[1].append(np.mean(np.abs(r_cleaned), axis=1))
-    
-    return pcc_mae[0], pvl_mae[0], pc_mae, np.mean(np.array(pears_is)), np.mean(np.array(nrmse_s)), np.mean(np.stack(ch_ampl[0]), axis=0), np.mean(np.stack(ch_ampl[1], axis=0))
+    ch_ampl[0] = np.stack(ch_ampl[0])
+    ch_ampl[0] = ch_ampl[0].astype(float)
+    ch_ampl[0][np.isinf(ch_ampl[0])] = np.nan
+    ch_ampl[1] = np.stack(ch_ampl[1])
+    ch_ampl[1] = ch_ampl[1].astype(float)
+    ch_ampl[1][np.isinf(ch_ampl[1])] = np.nan
+
+    return pcc_mae[0], pvl_mae[0], pc_mae, np.nanmean(pears_is), np.nanmean(nrmse_s), np.nanmean(ch_ampl[0], axis=0), np.nanmean(ch_ampl[1], axis=0)

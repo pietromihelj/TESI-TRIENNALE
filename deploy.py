@@ -17,12 +17,15 @@ class DeployVAEEG():
         Infine sposta il modello su cpu e lo mette in modalità eval
         """
         #carico i file
-        files = [torch.load(path) for path in paths]
+        files = [torch.load(path, map_location=torch.device('cpu')) for path in paths]
         #creo i modelli
         self.models = [VAEEG(1,*param) for param in params]
         #carico i pesi
-        for model, file in zip(self.models, files):
-            model.load_state_dict(file['model'])
+        i = 0
+        for model, file in zip(self.models,files):
+            print(f'load: {i}, {type(file)}')
+            model.load_state_dict(file)
+            i = i+1
         #assicuro che i modelli sia su cpu e li metto in modalità evaluation
         device = 'cpu'
         for model in self.models:
