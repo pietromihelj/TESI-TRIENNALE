@@ -1,12 +1,9 @@
 import torch 
 import torch.nn as nn
-import mne
 from sklearn import metrics
 from torch.utils.data import DataLoader, Dataset, random_split, Sampler, WeightedRandomSampler
-from utils import get_path_list, stride_data
+from utils import get_path_list
 import numpy as np
-import gc
-from tqdm import tqdm
 import random
 import os
 from time import time
@@ -145,8 +142,8 @@ class SeizureDetect_Model(nn.Module):
         self.lstm0 = nn.LSTM(50 * target_channels, 256, num_layers=2, batch_first=True,  bidirectional=False, dropout=0.1)
         self.lstm1 = nn.LSTM(256, 16, num_layers=1, batch_first=True,  bidirectional=False)
 
-        self.linear = nn.Sequential(nn.Flatten(start_dim=-2, end_dim=-1), nn.Linear(16, 32), nn.ReLU(), nn.Dropout(p=0.1),
-                                    nn.Linear(32, 1), nn.Sigmoid())
+        self.linear = nn.Sequential(nn.Flatten(start_dim=-2, end_dim=-1), nn.Linear(160, 32), nn.ReLU(), nn.Dropout(p=0.1),
+                                    nn.Linear(32, 1))
         
     def forward(self, x):
         x = self.headlayer(x)
@@ -199,12 +196,13 @@ class AtLeastOnePositiveSampler(Sampler):
         return self.num_batches * self.batch_size
 
 def bce_Loss(input, target, weight=None, device='cuda'):
-    if weight:
-        weight_ = torch.ones(target.size()).to(device)
-        weight_[target==0] = weight
-        return nn.BCELoss(weight=weight_)(input, target)
+    # input: logits (non sigmoid), target: float in {0,1}
+    if weight is not None:
+        weight_ = torch.ones_like(target, device=device)
+        weight_[target == 0] = weight
+        return nn.BCEWithLogitsLoss(weight=weight_)(input, target)
     else:
-        return nn.BCELoss()(input, target)
+        return nn.BCEWithLogitsLoss()(input, target)
 
 def save_model(model, file):
     torch.save(model.state_dict(), file)
@@ -220,6 +218,7 @@ def get_metrics(predict, label, class_num=2):
     acc0, acc1 = np.diagonal(metric)
     acc_total = metrics.accuracy_score(label, predict)
     return metric_cm, np.round(np.array([acc0, acc1, acc_total]), 3)
+
 
 def train_model(model, n_epoch, trainloader, testloader, lr, device='cuda', weigth = None, steps = 1):
 
@@ -240,7 +239,7 @@ def train_model(model, n_epoch, trainloader, testloader, lr, device='cuda', weig
             loss.backward()
             optimizer.step()
             tr_losses.append(loss)
-            pred = (pred > 0.5).float()
+            pred = (torch.sigmoid(pred) > 0.5).float()
             _, accs = get_metrics(pred.to("cpu").detach().numpy(), labels.to("cpu").detach().numpy(), class_num=2)
             tr_accs.append(accs[2])
         scheduler.step()
@@ -248,7 +247,8 @@ def train_model(model, n_epoch, trainloader, testloader, lr, device='cuda', weig
         if e % steps == 0:
             lr = optimizer.param_groups[0]['lr']
             print(f'Epoch: {e}, Loss: {np.mean(total_losses)}, Accuracy: {np.mean(tr_accs)}, Learning Rate: {lr}, Time: {time()-start}')
-            torch.save({'epoch': e,'model_state_dict': model.state_dict(),'loss': np.mean(total_losses),'accuracy': np.mean(tr_accs)}, f'seiz_detec/saves/ckpt_{e}.pt')
+            os.makedirs("/u/pmihelj/seizure_tr/saves/ckpt_{e}.pt", exist_ok=True)
+            torch.save({'epoch': e,'model_state_dict': model.state_dict(),'loss': np.mean(total_losses),'accuracy': np.mean(tr_accs)}, f'/u/pmihelj/seizure_tr/saves/ckpt_{e}.pt')
     
     model.eval()
     te_CMs = []
@@ -257,6 +257,7 @@ def train_model(model, n_epoch, trainloader, testloader, lr, device='cuda', weig
     rec_norm = []
     for te_data, labels in testloader:
         te_pred = model(te_data.float().to(device))
+        te_pred = (torch.sigmoid(te_pred) > 0.5).float()
         te_cm, te_accs = get_metrics(te_pred.to('cpu').detach().numpy(), labels.to('cpu').detach().numpy(), class_num=2)
         te_CMs.append(te_cm)
         accs.append(te_accs[2])
@@ -268,8 +269,8 @@ def train_model(model, n_epoch, trainloader, testloader, lr, device='cuda', weig
     return np.mean(te_CMs, axis=0), np.mean(accs), np.mean(rec_norm), np.mean(rec_seiz), total_losses
 
 
-#seizure_dir = "/u/pmihelj/datasets/seiz_ds/FastICA/seizure"
-#normal_dir = "/u/pmihelj/datasets/seiz_ds/FastICA/normal/"
+#seizure_dir = "/u/pmihelj/datasets/seiz_ds/Vaeeg/seizure_10/"
+#normal_dir = "/u/pmihelj/datasets/seiz_ds/Vaeeg/normal_10/"
 
 #normal_paths = get_path_list(normal_dir, f_extensions=['.npy'], sub_d=True)
 #seizure_paths = get_path_list(seizure_dir, f_extensions=['.npy'], sub_d=True)
@@ -281,14 +282,15 @@ def train_model(model, n_epoch, trainloader, testloader, lr, device='cuda', weig
 #train_size = int(0.8*len(dataset))
 #test_size = len(dataset) - train_size
 #train_ds, test_ds = random_split(dataset, [train_size, test_size])
-#torch.save(train_ds, "/u/pmihelj/datasets/seiz_ds/FastICA/Train.pt", _use_new_zipfile_serialization=True, pickle_protocol=5)
-#torch.save(test_ds, "/u/pmihelj/datasets/seiz_ds/FastICA/Test.pt", _use_new_zipfile_serialization=True, pickle_protocol=5)
+#torch.save(train_ds, "/u/pmihelj/datasets/seiz_ds/Vaeeg/Train.pt", _use_new_zipfile_serialization=True, pickle_protocol=5)
+#torch.save(test_ds, "/u/pmihelj/datasets/seiz_ds/Vaeeg/Test.pt", _use_new_zipfile_serialization=True, pickle_protocol=5)
 #print('dataset_salvato')
 BATCH_SIZE = 32
+print('Modello: VAEEG') ################################################################################################################################
 save_dir = 'seiz_detec/saves'
 os.makedirs(save_dir, exist_ok=True)
-train_ds = torch.load("/u/pmihelj/datasets/seiz_ds/FastICA/Train.pt", weights_only=False)
-test_ds = torch.load("/u/pmihelj/datasets/seiz_ds/FastICA/Test.pt", weights_only=False)
+train_ds = torch.load("/u/pmihelj/datasets/seiz_ds/Vaeeg/Train.pt", weights_only=False)
+test_ds = torch.load("/u/pmihelj/datasets/seiz_ds/Vaeeg/Test.pt", weights_only=False)
 #gestione sbilanciamento train
 labels = torch.tensor([train_ds[i][1] for i in range(len(train_ds))]).to(torch.int64)
 class_counts = torch.bincount(labels)
@@ -310,10 +312,10 @@ print('train loader creato')
 model = SeizureDetect_Model()
 print('inizio training')
 confmatr, accs, recall_norm, recall_seiz, total_losses = train_model(model, 1000, trainloader, testloader, 0.1, steps=100)
-np.save('seiz_detec/conf_matr.npy', confmatr)
-np.save('seiz_detec/accs.npy', accs)
-np.save('seiz_detec/recall_norm.npy', recall_norm)
-np.save('seiz_detec/recall_seiz.npy', recall_seiz)
+np.save('/u/pmihelj/seizure_tr/saves/conf_matr.npy', confmatr)
+np.save('/u/pmihelj/seizure_tr/saves/accs.npy', accs)
+np.save('/u/pmihelj/seizure_tr/saves/recall_norm.npy', recall_norm)
+np.save('/u/pmihelj/seizure_tr/saves/recall_seiz.npy', recall_seiz)
 
 """
 Nella seguente parte di codice paragono le distribuzioni latenti tra background e seizure

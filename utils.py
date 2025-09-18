@@ -331,78 +331,48 @@ def parse_summary_txt(txt_path):
     return metadata, df
 
 def to_monopolar(raw_bipolar, ref='average', ch_name_sep='-'):
-    """
-    Ricostruisce canali monopolari da bipolari, con possibilità di più riferimenti.
-    
-    Parametri
-    ----------
-    raw_bipolar : mne.io.Raw
-        Oggetto Raw con canali bipolari (es. 'T8-P8').
-    ref : str, list of str o None
-        - 'average' -> sottrae la media su tutti gli elettrodi
-        - lista di nomi elettrodi -> usa il primo presente come riferimento
-        - nome singolo -> usa quell'elettrodo come riferimento
-        - None -> lascia costante arbitraria
-    ch_name_sep : str
-        Separatore nei nomi bipolari (default '-')
-    
-    Ritorna
-    -------
-    raw_monopolar : mne.io.RawArray
-        Segnali monopolari ricostruiti
-    max_diff : float
-        Errore massimo di ricostruzione
-    """
     ch_names = raw_bipolar.ch_names
     data_bip, times = raw_bipolar.get_data(return_times=True)
     data_bip = data_bip.astype(np.float32)
     n_bip, n_samples = data_bip.shape
 
-    # Parse bipoli
     pairs = []
     for ch in ch_names:
         if ch_name_sep in ch:
             a, c = ch.split(ch_name_sep, 1)
-            a, c = a.strip(), c.strip()
+            a, c = a.strip().upper(), c.strip().upper()
             pairs.append((a, c))
         else:
             raise ValueError(f"Channel name '{ch}' non contiene il separatore '{ch_name_sep}'")
-    
-    # Lista unica di elettrodi
-    electrodes = []
-    for a, c in pairs:
-        if a.upper() not in electrodes:
-            electrodes.append(a.upper())
-        if c.upper() not in electrodes:
-            electrodes.append(c.upper())
+
+    electrodes = sorted(set([a for a, _ in pairs] + [c for _, c in pairs]))
     n_ele = len(electrodes)
 
-    # Matrice A (n_bip x n_ele)
     A = np.zeros((n_bip, n_ele), dtype=float)
     for i, (a, c) in enumerate(pairs):
         A[i, electrodes.index(a)] =  1.0
         A[i, electrodes.index(c)] = -1.0
 
-    # Pseudoinversa e soluzione
     A_pinv = np.linalg.pinv(A)
     V = A_pinv.dot(data_bip)
 
-    # Gestione riferimenti multipli
     if isinstance(ref, list):
-        # prendi il primo riferimento presente nella lista
         ref_found = None
         for r in ref:
+            r = r.upper()
             if r in electrodes:
                 ref_found = r
                 break
         if ref_found is None:
-            raise ValueError(f"Nessun riferimento della lista trovato negli elettrodi: {ref}, lista:{electrodes}")
-        ref = ref_found  # ora diventa stringa singola
+            raise ValueError(f"Nessun riferimento trovato in {ref}, disponibili: {electrodes}")
+        ref = ref_found  
 
-    # Applica riferimento
     if ref == 'average':
         V = V - V.mean(axis=0, keepdims=True)
     elif isinstance(ref, str):
+        ref = ref.upper()
+        if ref not in electrodes:
+            raise ValueError(f"Riferimento {ref} non trovato negli elettrodi {electrodes}")
         ref_idx = electrodes.index(ref)
         V = V - V[ref_idx:ref_idx+1, :]
     elif ref is None:
@@ -410,19 +380,17 @@ def to_monopolar(raw_bipolar, ref='average', ch_name_sep='-'):
     else:
         raise ValueError("Param ref deve essere 'average', None, stringa o lista di stringhe.")
 
-    # Crea info e RawArray
     sfreq = raw_bipolar.info['sfreq']
     info = mne.create_info(ch_names=electrodes, sfreq=sfreq, ch_types='eeg')
     raw_monopolar = mne.io.RawArray(V, info, verbose=False)
 
-    # Controllo ricostruzione
     reconstructed_bip = A.dot(V)
-    max_diff = max(np.max(np.abs(A[i, :].dot(V) - data_bip[i, :])) for i in range(n_bip))
+    max_diff = np.max(np.abs(reconstructed_bip - data_bip))
 
     return raw_monopolar, max_diff
 
 def select_bipolar(raw):
-    ch_necessary = ['F3', 'F4', 'C3', 'C4', 'O1', 'O2', 'CZ']
+    ch_necessary = ['F3', 'F4', 'C3', 'C4', 'O1', 'O2', 'CZ']  
     flag = False
 
     selected_chs = []

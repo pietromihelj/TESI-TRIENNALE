@@ -1,4 +1,5 @@
 from sklearn.linear_model import Lasso, LinearRegression, Ridge
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import  mean_absolute_error, r2_score
 from deploy import load_models, get_orig_rec_latent
@@ -51,11 +52,11 @@ print('RAWS: ', len(raws))
 
 
 #inizzializzo i predittori di test
-predictors = [
-    ("LinearRegression", LinearRegression()),
-    ("Lasso", Lasso(alpha=1.0, max_iter=50000)),
-    ("Ridge", Ridge(alpha=1.0)),
-]
+predictors = [('RandomForestRegressor', RandomForestRegressor())]
+#    ("LinearRegression", LinearRegression()),]
+#    ("Lasso", Lasso(alpha=1.0, max_iter=50000)),
+#    ("Ridge", Ridge(alpha=1.0)),
+#]
 
 results = {}
 latents_for_r2 = []

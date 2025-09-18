@@ -370,7 +370,7 @@ print('#########################################################################
 
 """
 
-
+"""
 save_norm = "D:/seizure_latent/normal"
 os.makedirs(save_norm, exist_ok=True)
 normal_paths = get_path_list("D:/seizure_dataset/normal", f_extensions=['.edf'], sub_d=True)
@@ -394,3 +394,89 @@ for i,norm in enumerate(normal_paths):
     gc.collect()
 print('Fine salvataggio EEG')
 print('############################################################################')
+"""
+
+"""
+import os, gc
+import numpy as np
+from utils import stride_data, get_path_list
+
+paths = get_path_list("/u/pmihelj/datasets/seiz_ds/Vaeeg/seizure/", f_extensions=['.npy'], sub_d=True)
+
+saved_clips = 0
+buffer = []   # lista temporanea per accumulare 10 clip
+
+for path in paths:
+    eeg = np.load(path, allow_pickle=True)
+    print('inizio:', path, eeg.shape)
+
+    # controllo dimensioni base
+    if len(eeg.shape) != 3:
+        print('eliminato:', path, eeg.shape)
+        continue  
+
+    # caso già lungo 500
+    if eeg.shape[-1] == 500:
+        dir_name, file_name = os.path.split(path)
+        new_dir = dir_name.replace("normal", "seizure_10")
+        os.makedirs(new_dir, exist_ok=True)
+        new_path = os.path.join(new_dir, file_name)
+        np.save(new_path, eeg)
+        print('salvataggio senza modifiche')
+        continue
+    
+    # caso multiplo di 50
+    if eeg.shape[-1] % 50 == 0:
+        eeg = stride_data(eeg, 50 ,0)
+        eeg = eeg.reshape(19, -1, 50)
+    
+    # scarto quelli non corretti
+    if eeg.shape[-1] != 50:
+        print('scartato:', path, eeg.shape)
+        continue      
+
+    # porto a [clip_num, ch_num, 50]
+    eeg = eeg.transpose(1,0,2)
+    buffer.append(eeg)
+    saved_clips += eeg.shape[0]
+
+    # ogni 10 clip salvate
+    if saved_clips % 10 == 0:
+        saved_eeg = np.concatenate(buffer, axis=0)   # [tot_clip, ch_num, 50]
+        buffer = []   # svuoto
+
+        # ricombino in segmenti da 10 → [ch_num, 500]
+        saved_eeg = saved_eeg.transpose(1,2,0)         # [ch_num, 50, tot_clip]
+        saved_eeg = stride_data(saved_eeg, 10, 0)      # [ch_num, 50, n_segments, 10]
+        saved_eeg = saved_eeg.transpose(0,2,1,3)       # [ch_num, n_segments, 50, 10]
+        saved_eeg = saved_eeg.reshape(saved_eeg.shape[0], saved_eeg.shape[1], -1)  # [ch_num, n_segments, 500]
+
+        print('salvataggio:', saved_eeg.shape)
+        dir_name, file_name = os.path.split(path)
+        new_dir = dir_name.replace("seizure", "seizure_10")
+        os.makedirs(new_dir, exist_ok=True)
+        new_path = os.path.join(new_dir, file_name)
+        np.save(new_path, saved_eeg)
+print('END')
+"""
+
+import numpy as np
+from utils import get_path_list
+
+def check_all_nan_channels(eeg):
+    # canali completamente NaN (su tutte le clip e tutta la lunghezza)
+    if len(eeg.shape) != 3:
+        print(f'EEG: {path}, ha lunghezza 0')
+    else:
+        eeg[np.isinf(eeg)] = np.nan 
+        nan_channels = np.where(np.all(np.isnan(eeg), axis=(1,2)))[0]
+        if len(nan_channels) == 0:
+            print("✅ Nessun canale completamente NaN")
+        else:
+            print("⚠️ Canali completamente NaN:", nan_channels.tolist())
+
+paths = get_path_list("D:/normal", f_extensions=['.npy'], sub_d=True)
+
+for path in paths:
+    eeg = np.load(path, allow_pickle=True)        
+    check_all_nan_channels(eeg)

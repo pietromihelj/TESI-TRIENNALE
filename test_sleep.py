@@ -1,51 +1,204 @@
 import pandas as pd
+import os
 import mne
 import numpy as np
 from collections import defaultdict
-from utils import select_bipolar, to_monopolar, strip_eeg_prefix
+from utils import select_bipolar, to_monopolar, strip_eeg_prefix, get_path_list
+import gc
+from tqdm import tqdm
+import warnings
 
+"""
 # Carica il TSV
-df = pd.read_csv("test_sleep/10000_17728.tsv", sep='\t')
-
+save_dir = "C:/Users/Pietro/Desktop/sleep"
+edf_paths = get_path_list("D:/nchsdb/sleep_data", f_extensions=['.edf'], sub_d=True)
+tsv_paths = get_path_list("D:/nchsdb/sleep_data", f_extensions=['.tsv'], sub_d=True)
+max_val = 0
 # Definisci i sleep stages che ti interessano
-sleep_stages = {"Sleep stage W", "Sleep stage N1", "Sleep stage N2", "Sleep stage N3"}
+sleep_stages = {"Sleep stage W", "Sleep stage N1", "Sleep stage N2", "Sleep stage N3", 'Sleep stage R'}
 
-# Lista dei segmenti (start, end, stage)
-segments = []
+for edf_path, tsv_path in tqdm(zip(edf_paths, tsv_paths)):
+    df = pd.read_csv(tsv_path, sep='\t')
+    segments = []
 
-for _, row in df.iterrows():
-    desc = row['description']
-    if desc in sleep_stages:
-        start = row['onset']
-        end = start + row['duration']  # duration è in secondi
-        segments.append((start, end, desc))
+    for _, row in df.iterrows():
+        desc = row['description']
+        if desc in sleep_stages:
+            start = row['onset']
+            end = start + row['duration']  
+            segments.append((start, end, desc))
 
-# Ordina per inizio, opzionale
-segments.sort(key=lambda x: x[0])
-segments.insert(0,(0, segments[0][0], 'Wakefullness'))
-print(len(segments))
-# Mostra i primi segmenti
-for seg in segments[:10]:
-    print(seg)
+    del df
+    gc.collect()
 
-raw = mne.io.read_raw_edf('test_sleep/10000_17728.edf')
-strip_eeg_prefix(raw)
-raw, _ = select_bipolar(raw)
-raw_mono, max_diff = to_monopolar(raw)
-print(raw.info['ch_names'], max_diff)
+    segments.sort(key=lambda x: x[0])
+    if len(segments) > 0:
+        segments.insert(0, (0, segments[0][0], 'Sleep stage W'))
+    else:
+        print(f"Attenzione: nessun sleep stage trovato in {tsv_path}")
+        continue
+    segments.insert(0,(0, segments[0][0], 'Sleep stage W'))
 
-intervalls = defaultdict(list)
+    raw = mne.io.read_raw_edf(edf_path, verbose=False)
+    strip_eeg_prefix(raw)
+    raw, _ = select_bipolar(raw)
+    raw_mono, max_diff = to_monopolar(raw)
 
-eeg = raw.get_data()
-print(eeg.max())
-sf = raw.info['sfreq']
-raw.close()
+    intervalls = defaultdict(list)
 
-for (start, end, stage) in segments:
-    intervalls[stage].append(eeg[:,int(start*sf):int(end*sf)])
+    eeg = raw.get_data()
+    if eeg.max() > max_val: 
+        max_val = eeg.max()
+    sf = raw.info['sfreq']
+    ch_names = raw.info['ch_names']  
+    ch_types = ['eeg']*len(ch_names)
+    raw.close()
 
-for stage in intervalls:
-    intervalls[stage] = np.array(intervalls[stage])
+    for (start, end, stage) in segments:
+        intervalls[stage].append(eeg[:,int(start*sf):int(end*sf)])
+    
+    del segments, raw, eeg
+    gc.collect()
 
-for stage in intervalls:
-    print(intervalls[stage].shape)
+    for stage in intervalls.keys():
+        stage_dir = os.path.join(save_dir, stage.replace(" ", "_")) 
+        os.makedirs(stage_dir, exist_ok=True)
+
+    for stage in intervalls:
+        data = intervalls[stage]
+        if len(data) == 0:
+            continue
+        data_concat = np.concatenate(data, axis=1)
+        if data_concat.shape[1] == 0:
+            continue
+        info = mne.create_info(ch_names=ch_names, sfreq=sf, ch_types=ch_types)
+        raw_stage = mne.io.RawArray(data_concat, info, verbose=False)
+        stage_name = stage.replace(" ", "_")
+        stage_dir = os.path.join(save_dir, stage_name)
+        os.makedirs(stage_dir, exist_ok=True)
+        base_name = os.path.splitext(os.path.basename(edf_path))[0]
+        save_path = os.path.join(stage_dir, f"{base_name}.edf")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            raw_stage.export(save_path, fmt='edf', verbose=False, overwrite=True)
+    
+    del intervalls, data, data_concat, raw_stage
+    gc.collect()
+
+print(f'Done con max: {max_val}')
+"""
+
+"""
+df = pd.read_csv("D:/nchsdb/nchsdb-dataset-0.3.0.csv")
+paths = get_path_list("C:/Users/Pietro/Desktop/sleep/PCA", f_extensions=['.npy'], sub_d=True)
+filenames_to_keep = [os.path.basename(p).split('.')[0] for p in paths]
+filtered_df = df[df['filename_id'].isin(filenames_to_keep)]
+filtered_df.to_csv("C:/Users/Pietro/Desktop/sleep/labels.csv")
+filename_id_list = filtered_df['filename_id'].str.split('_').str[:2].str.join('_').tolist()
+print(filename_id_list)
+"""
+
+"""
+c = ['10000_17728.npy', '10003_26038.npy', '10006_20647.npy', '10009_25600.npy', '10012_22912.npy', '10015_10063.npy', '10015_14671.npy', '10018_22795.npy', '10033_16222.npy', '10036_20251.npy', '10048_24622.npy', '10051_25690.npy', '10054_21487.npy', '10057_15631.npy', '10066_18364.npy', '10069_15268.npy', '1006_22780.npy', '10072_24649.npy', '10078_7729.npy', '10090_5857.npy', '10090_9685.npy', '10093_6151.npy', '10096_20284.npy', '10099_17011.npy', '100_23083.npy', '10105_19129.npy', '10114_20053.npy', '10120_9760.npy', '10123_14797.npy', '10144_23671.npy', '10153_25078.npy', '10153_67.npy', '10156_4342.npy', '10162_1414.npy', '10165_11332.npy', '10168_17788.npy', '10171_1792.npy', '10174_346.npy', '10180_22414.npy', '10186_22441.npy', '1018_8320.npy', '10192_3532.npy', '10195_9385.npy', '10198_19348.npy', '10204_25699.npy', '10222_12718.npy', '10246_12610.npy', '10252_24970.npy', '10255_9451.npy', '10258_21364.npy', '10261_14368.npy', '10267_6370.npy', '10270_2200.npy', '10276_8998.npy', '10279_8281.npy', '10285_16114.npy', '10288_7846.npy', '10291_15346.npy', '10291_18322.npy', '10294_16576.npy', '10297_14161.npy', '10297_20458.npy', '10297_7960.npy', '10312_4849.npy', '10315_10021.npy', '10324_19570.npy', '10333_4372.npy', '10336_6721.npy', '10339_13237.npy', '10342_12955.npy', '10345_25318.npy', '10348_2602.npy', '10351_643.npy', '10360_23866.npy', '10369_5884.npy', '1036_11668.npy', '10372_22270.npy', '10381_17647.npy', '10384_18907.npy', '10390_6274.npy', '10396_11680.npy', '10399_20446.npy', '103_12325.npy', '10402_23326.npy', '10405_6634.npy', '10414_3181.npy', '10417_25045.npy', '10426_21286.npy', '1042_24913.npy', '1042_775.npy', '10435_20893.npy', '10435_6577.npy', '10441_12229.npy', '10444_15721.npy', '10444_22135.npy', '10447_13432.npy', '10450_2512.npy', '10453_1153.npy', '1045_4819.npy', '10462_20605.npy', '10465_19255.npy', '10480_2032.npy', '10483_8680.npy', '10486_19483.npy', '1048_7114.npy', '10498_13639.npy', '10498_4996.npy', '10504_17392.npy', '10513_13801.npy', '10516_2392.npy', '10519_20674.npy', '10519_4546.npy', '1051_19189.npy', '10522_13009.npy', '10525_13915.npy', '10534_3961.npy', '10540_17215.npy', '10549_8125.npy', '1054_11971.npy', '10552_17644.npy', '10564_15910.npy', '10570_22018.npy', '10579_208.npy', '1057_9547.npy', '10582_25837.npy', '10594_9313.npy', '10597_21898.npy', '10600_15070.npy', '10603_1015.npy', '10615_8221.npy', '10624_13717.npy', '10633_24088.npy', '10636_16792.npy', '10639_172.npy', '10645_8068.npy', '10648_8752.npy', '10654_13777.npy', '10657_5980.npy', '10660_11752.npy', '10669_25549.npy', '10675_21523.npy', '10687_940.npy', '10696_11257.npy', '1069_8029.npy', '10702_25252.npy', '10717_23026.npy', '10720_20008.npy', '10726_12454.npy', '10729_21295.npy', '1072_12373.npy', '10732_24130.npy', '10738_20242.npy', '10744_21664.npy', '10747_21667.npy', '10750_20494.npy', '10759_11347.npy', '1075_5416.npy', '10762_2980.npy', '10768_298.npy', '10774_17320.npy', '10780_19411.npy', '10786_2962.npy', '10792_23524.npy', '10798_556.npy', '10813_15271.npy', '10819_25945.npy', '10822_10051.npy', '10822_18757.npy', '10834_9601.npy', '10837_13219.npy', '10849_5860.npy', '1084_17239.npy', '10855_25105.npy', '10858_17251.npy', '10864_18538.npy', '10867_19945.npy', '10873_9136.npy', '10876_21967.npy', '10879_13192.npy', '1087_6460.npy', '10885_9073.npy', '10888_26008.npy', '10891_9559.npy', '10903_14986.npy', '10909_1378.npy', '10924_2065.npy', '10936_1957.npy', '10939_7078.npy', '10948_1297.npy', '10951_6178.npy', '10963_14464.npy', '1096_18565.npy', '10975_5821.npy', '10978_6367.npy', '10981_22453.npy', '10987_22303.npy', '10996_10132.npy', '10999_23203.npy', '1099_20092.npy', '10_22339.npy', '11002_22960.npy', '11005_23680.npy', '11011_4774.npy', '11017_21778.npy', '11020_4750.npy', '11023_538.npy', '1102_10120.npy', '11032_760.npy', '11038_3319.npy', '11041_18442.npy', '11050_13084.npy', '11050_18700.npy', '1105_6529.npy', '11065_9355.npy', '11068_17590.npy', '11071_12112.npy', '11074_18238.npy', '11080_2014.npy', '11083_21130.npy', '11086_3460.npy', '11089_15991.npy', '1108_21616.npy', '10000_17728.npy', '10003_26038.npy', '10006_20647.npy', '10009_25600.npy', '10012_22912.npy', '10015_10063.npy', '10015_14671.npy', '10018_22795.npy', '10033_16222.npy', '10036_20251.npy', '10048_24622.npy', '10051_25690.npy', '10054_21487.npy', '10057_15631.npy', '10066_18364.npy', '10069_15268.npy', '1006_22780.npy', '10072_24649.npy', '10078_7729.npy', '10090_5857.npy', '10090_9685.npy', '10093_6151.npy', '10096_20284.npy', '10099_17011.npy', '100_23083.npy', '10105_19129.npy', '10114_20053.npy', '10120_9760.npy', '10123_14797.npy', '10135_9082.npy', '10144_23671.npy', '10153_25078.npy', '10153_67.npy', '10156_4342.npy', '10162_1414.npy', '10165_11332.npy', '10168_17788.npy', '10171_1792.npy', '10174_346.npy', '10180_22414.npy', '10186_22441.npy', '1018_8320.npy', '10192_3532.npy', '10195_9385.npy', '10198_19348.npy', '10201_9262.npy', '10204_25699.npy', '10222_12718.npy', '10246_12610.npy', '10252_24970.npy', '10255_9451.npy', '10258_21364.npy', '10261_14368.npy', '10267_6370.npy', '10270_2200.npy', '10276_8998.npy', '10279_8281.npy', '10285_16114.npy', '10288_7846.npy', '10291_15346.npy', '10291_18322.npy', '10294_16576.npy', '10297_14161.npy', '10297_20458.npy', '10297_7960.npy', '10312_4849.npy', '10315_10021.npy', '10324_19570.npy', '10333_4372.npy', '10336_6721.npy', '10339_13237.npy', '10342_12955.npy', '10345_25318.npy', '10348_2602.npy', '10351_643.npy', '10360_23866.npy', '10369_5884.npy', '1036_11668.npy', '10372_22270.npy', '10381_17647.npy', '10384_18907.npy', '10390_6274.npy', '10396_11680.npy', '10399_20446.npy', '103_12325.npy', '10402_23326.npy', '10405_6634.npy', '10414_3181.npy', '10417_25045.npy', '10426_21286.npy', '1042_24913.npy', '1042_775.npy', '10435_20893.npy', '10435_6577.npy', '10441_12229.npy', '10444_15721.npy', '10444_22135.npy', '10447_13432.npy', '10450_2512.npy', '10453_1153.npy', '1045_4819.npy', '10462_20605.npy', '10465_19255.npy', '10480_2032.npy', '10483_8680.npy', '10486_19483.npy', '1048_7114.npy', '10498_13639.npy', '10498_4996.npy', '10504_17392.npy', '10513_13801.npy', '10516_2392.npy', '10519_20674.npy', '10519_4546.npy', '1051_19189.npy', '10522_13009.npy', '10525_13915.npy', '10534_3961.npy', '10540_17215.npy', '10549_8125.npy', '1054_11971.npy', '10552_17644.npy', '10564_15910.npy', '10570_22018.npy', '10579_208.npy', '1057_9547.npy', '10582_25837.npy', '10594_9313.npy', '10597_21898.npy', '10600_15070.npy', '10603_1015.npy', '10615_8221.npy', '10624_13717.npy', '10633_24088.npy', '10636_16792.npy', '10639_172.npy', '10645_8068.npy', '10648_8752.npy', '10654_13777.npy', '10657_5980.npy', '10660_11752.npy', '10669_25549.npy', '10675_21523.npy', '10687_940.npy', '10696_11257.npy', '1069_8029.npy', '10702_25252.npy', '10717_23026.npy', '10720_20008.npy', '10726_12454.npy', '10729_21295.npy', '1072_12373.npy', '10732_24130.npy', '10738_20242.npy', '10744_21664.npy', '10747_21667.npy', '10750_20494.npy', '10759_11347.npy', '1075_5416.npy', '10762_2980.npy', '10768_298.npy', '10774_17320.npy', '10780_19411.npy', '10786_2962.npy', '10792_23524.npy', '10798_556.npy', '10813_15271.npy', '10819_25945.npy', '10822_10051.npy', '10822_18757.npy', '10834_9601.npy', '10837_13219.npy', '10849_5860.npy', '1084_17239.npy', '10855_25105.npy', '10858_17251.npy', '10864_18538.npy', '10867_19945.npy', '10873_9136.npy', '10876_21967.npy', '10879_13192.npy', '1087_6460.npy', '10885_9073.npy', '10888_26008.npy', '10891_9559.npy', '10903_14986.npy', '10909_1378.npy', '10924_2065.npy', '10936_1957.npy', '10939_7078.npy', '10948_1297.npy', '10951_6178.npy', '10963_14464.npy', '1096_18565.npy', '10975_5821.npy', '10978_6367.npy', '10981_22453.npy', '10987_22303.npy', '10996_10132.npy', '10999_23203.npy', '1099_20092.npy', '10_22339.npy', '11002_22960.npy', '11005_23680.npy', '11011_4774.npy', '11017_21778.npy', '11020_4750.npy', '11023_538.npy', '1102_10120.npy', '11032_760.npy', '11038_3319.npy', '11041_18442.npy', '11047_20668.npy', '11050_13084.npy', '11050_18700.npy', '1105_6529.npy', '11065_9355.npy', '11068_17590.npy', '11071_12112.npy', '11074_18238.npy', '11080_2014.npy', '11083_21130.npy', '11086_3460.npy', '11089_15991.npy', '1108_21616.npy', '10000_17728.npy', '10003_26038.npy', '10006_20647.npy', '10009_25600.npy', '10012_22912.npy', '10015_10063.npy', '10015_14671.npy', '10018_22795.npy', '10033_16222.npy', '10036_20251.npy', '10048_24622.npy', '10051_25690.npy', '10054_21487.npy', '10057_15631.npy', '10066_18364.npy', '10069_15268.npy', '1006_22780.npy', '10072_24649.npy', '10078_7729.npy', '10090_5857.npy', '10090_9685.npy', '10093_6151.npy', '10096_20284.npy', '10099_17011.npy', '100_23083.npy', '10105_19129.npy', '10114_20053.npy', '10120_9760.npy', '10123_14797.npy', '10135_9082.npy', '10144_23671.npy', '10153_25078.npy', '10153_67.npy', '10156_4342.npy', '10162_1414.npy', '10165_11332.npy', '10168_17788.npy', '10171_1792.npy', '10174_346.npy', '10180_22414.npy', '10186_22441.npy', '1018_8320.npy', '10192_3532.npy', '10195_9385.npy', '10198_19348.npy', '10201_9262.npy', '10204_25699.npy', '10222_12718.npy', '10246_12610.npy', '10252_24970.npy', '10255_9451.npy', '10258_21364.npy', '10261_14368.npy', '10267_6370.npy', '10270_2200.npy', '10276_8998.npy', '10279_8281.npy', '10285_16114.npy', '10288_7846.npy', '10291_15346.npy', '10291_18322.npy', '10294_16576.npy', '10297_14161.npy', '10297_20458.npy', '10297_7960.npy', '10312_4849.npy', '10315_10021.npy', '10324_19570.npy', '10333_4372.npy', '10336_6721.npy', '10339_13237.npy', '10342_12955.npy', '10345_25318.npy', '10348_2602.npy', '10351_643.npy', '10360_23866.npy', '10369_5884.npy', '1036_11668.npy', '10372_22270.npy', '10381_17647.npy', '10384_18907.npy', '10390_6274.npy', '10396_11680.npy', '10399_20446.npy', '103_12325.npy', '10402_23326.npy', '10405_6634.npy', '10414_3181.npy', '10417_25045.npy', '10426_21286.npy', '1042_24913.npy', '1042_775.npy', '10435_20893.npy', '10435_6577.npy', '10441_12229.npy', '10444_15721.npy', '10444_22135.npy', '10447_13432.npy', '10450_2512.npy', '10453_1153.npy', '1045_4819.npy', '10462_20605.npy', '10465_19255.npy', '10480_2032.npy', '10483_8680.npy', '10486_19483.npy', '1048_7114.npy', '10498_13639.npy', '10498_4996.npy', '10504_17392.npy', '10513_13801.npy', '10516_2392.npy', '10519_20674.npy', '10519_4546.npy', '1051_19189.npy', '10522_13009.npy', '10525_13915.npy', '10534_3961.npy', '10540_17215.npy', '10549_8125.npy', '1054_11971.npy', '10552_17644.npy', '10564_15910.npy', '10570_22018.npy', '10579_208.npy', '1057_9547.npy', '10582_25837.npy', '10588_7951.npy', '10594_9313.npy', '10597_21898.npy', '10600_15070.npy', '10603_1015.npy', '10615_8221.npy', '10624_13717.npy', '10633_24088.npy', '10636_16792.npy', '10639_172.npy', '10645_8068.npy', '10648_8752.npy', '10654_13777.npy', '10657_5980.npy', '10660_11752.npy', '10669_25549.npy', '10675_21523.npy', '10687_940.npy', '10696_11257.npy', '1069_8029.npy', '10702_25252.npy', '10717_23026.npy', '10720_20008.npy', '10726_12454.npy', '10729_21295.npy', '1072_12373.npy', '10732_24130.npy', '10738_20242.npy', '10744_21664.npy', '10747_21667.npy', '10750_20494.npy', '10759_11347.npy', '1075_5416.npy', '10762_2980.npy', '10768_298.npy', '10774_17320.npy', '10780_19411.npy', '10786_2962.npy', '10792_23524.npy', '10798_556.npy', '10813_15271.npy', '10819_25945.npy', '10822_10051.npy', '10822_18757.npy', '10834_9601.npy', '10837_13219.npy', '10849_5860.npy', '1084_17239.npy', '10855_25105.npy', '10858_17251.npy', '10864_18538.npy', '10867_19945.npy', '10873_9136.npy', '10876_21967.npy', '10879_13192.npy', '1087_6460.npy', '10885_9073.npy', '10888_26008.npy', '10891_9559.npy', '10903_14986.npy', '10909_1378.npy', '10924_2065.npy', '10936_1957.npy', '10939_7078.npy', '10948_1297.npy', '10951_6178.npy', '10963_14464.npy', '1096_18565.npy', '10975_5821.npy', '10978_6367.npy', '10981_22453.npy', '10987_22303.npy', '10996_10132.npy', '10999_23203.npy', '1099_20092.npy', '10_22339.npy', '11002_22960.npy', '11005_23680.npy', '11011_4774.npy', '11017_21778.npy', '11020_4750.npy', '11023_538.npy', '1102_10120.npy', '11032_760.npy', '11038_3319.npy', '11041_18442.npy', '11047_20668.npy', '11050_13084.npy', '11050_18700.npy', '1105_6529.npy', '11065_9355.npy', '11068_17590.npy', '11071_12112.npy', '11074_18238.npy', '11080_2014.npy', '11083_21130.npy', '11086_3460.npy', '11089_15991.npy', '1108_21616.npy', '10000_17728.npy', '10003_26038.npy', '10006_20647.npy', '10009_25600.npy', '10015_10063.npy', '10015_14671.npy', '10018_22795.npy', '10030_16192.npy', '10033_16222.npy', '10036_20251.npy', '10048_24622.npy', '10051_25690.npy', '10054_21487.npy', '10057_15631.npy', '10066_18364.npy', '10069_15268.npy', '1006_22780.npy', '10072_24649.npy', '10078_7729.npy', '10090_5857.npy', '10090_9685.npy', '10093_6151.npy', '10096_20284.npy', '10099_17011.npy', '100_23083.npy', '10105_19129.npy', '10114_20053.npy', '10120_9760.npy', '10123_14797.npy', '10135_9082.npy', '10144_23671.npy', '10153_25078.npy', '10153_67.npy', '10156_4342.npy', '1015_22468.npy', '10162_1414.npy', '10165_11332.npy', '10168_17788.npy', '10171_1792.npy', '10174_346.npy', '10180_22414.npy', '10186_22441.npy', '1018_8320.npy', '10192_3532.npy', '10195_9385.npy', '10198_19348.npy', '10201_9262.npy', '10204_25699.npy', '10222_12718.npy', '10246_12610.npy', '10252_24970.npy', '10255_9451.npy', '10258_21364.npy', '10261_14368.npy', '10267_6370.npy', '10270_2200.npy', '10276_8998.npy', '10279_8281.npy', '10285_16114.npy', '10288_7846.npy', '10291_15346.npy', '10291_18322.npy', '10294_16576.npy', '10297_14161.npy', '10297_20458.npy', '10297_7960.npy', '10312_4849.npy', '10315_10021.npy', '10324_19570.npy', '10333_4372.npy', '10336_6721.npy', '10339_13237.npy', '10342_12955.npy', '10345_25318.npy', '10348_2602.npy', '10351_643.npy', '10369_5884.npy', '1036_11668.npy', '10372_22270.npy', '10381_17647.npy', '10384_18907.npy', '10390_6274.npy', '10396_11680.npy', '10399_20446.npy', '103_12325.npy', '10402_23326.npy', '10405_6634.npy', '10414_3181.npy', '10417_25045.npy', '10426_21286.npy', '1042_24913.npy', '1042_775.npy', '10435_20893.npy', '10435_6577.npy', '10441_12229.npy', '10444_15721.npy', '10444_22135.npy', '10447_13432.npy', '10450_2512.npy', '10453_1153.npy', '1045_4819.npy', '10462_20605.npy', '10465_19255.npy', '10480_2032.npy', '10483_8680.npy', '10486_19483.npy', '1048_7114.npy', '10498_13639.npy', '10498_4996.npy', '10504_17392.npy', '10513_13801.npy', '10516_2392.npy', '10519_20674.npy', '10519_4546.npy', '1051_19189.npy', '10522_13009.npy', '10525_13915.npy', '10534_3961.npy', '10540_17215.npy', '10549_8125.npy', '1054_11971.npy', '10552_17644.npy', '10564_15910.npy', '10570_22018.npy', '10579_208.npy', '1057_9547.npy', '10582_25837.npy', '10594_9313.npy', '10597_21898.npy', '10600_15070.npy', '10603_1015.npy', '10615_8221.npy', '10624_13717.npy', '10633_24088.npy', '10636_16792.npy', '10639_172.npy', '10645_8068.npy', '10648_8752.npy', '10654_13777.npy', '10657_5980.npy', '10660_11752.npy', '10669_25549.npy', '10675_21523.npy', '10687_940.npy', '10696_11257.npy', '1069_8029.npy', '10702_25252.npy', '10717_23026.npy', '10720_18445.npy', '10720_20008.npy', '10726_12454.npy', '10729_21295.npy', '1072_12373.npy', '10732_24130.npy', '10738_20242.npy', '10744_21664.npy', '10747_21667.npy', '10750_20494.npy', '10759_11347.npy', '10762_2980.npy', '10768_298.npy', '10774_17320.npy', '10780_19411.npy', '10792_23524.npy', '10798_556.npy', '10813_15271.npy', '10819_25945.npy', '10822_10051.npy', '10822_18757.npy', '10834_9601.npy', '10837_13219.npy', '10849_5860.npy', '1084_17239.npy', '10855_25105.npy', '10858_17251.npy', '10864_18538.npy', '10867_19945.npy', '10873_9136.npy', '10876_21967.npy', '10879_13192.npy', '1087_6460.npy', '10885_9073.npy', '10888_26008.npy', '10891_9559.npy', '10903_14986.npy', '10909_1378.npy', '10924_2065.npy', '10939_7078.npy', '1093_1408.npy', '10948_1297.npy', '10951_6178.npy', '10963_14464.npy', '1096_18565.npy', '10975_5821.npy', '10978_6367.npy', '10981_22453.npy', '10987_22303.npy', '10996_10132.npy', '10999_23203.npy', '1099_20092.npy', '10_22339.npy', '11002_22960.npy', '11005_23680.npy', '11011_4774.npy', '11017_21778.npy', '11020_4750.npy', '11023_538.npy', '1102_10120.npy', '11032_760.npy', '11038_3319.npy', '11041_18442.npy', '11047_20668.npy', '11050_13084.npy', '11050_18700.npy', '1105_6529.npy', '11065_9355.npy', '11068_17590.npy', '11071_12112.npy', '11074_18238.npy', '11080_2014.npy', '11083_21130.npy', '11086_3460.npy', '11089_15991.npy', '1108_21616.npy', '10000_17728.npy', '10003_26038.npy', '10006_20647.npy', '10009_25600.npy', '10012_22912.npy', '10015_10063.npy', '10015_14671.npy', '10018_22795.npy', '10030_16192.npy', '10033_16222.npy', '10036_20251.npy', '10048_24622.npy', '10051_25690.npy', '10054_21487.npy', '10057_15631.npy', '10066_18364.npy', '10069_15268.npy', '1006_22780.npy', '10072_24649.npy', '10078_7729.npy', '10090_5857.npy', '10090_9685.npy', '10093_6151.npy', '10096_20284.npy', '10099_17011.npy', '100_23083.npy', '10105_19129.npy', '10114_20053.npy', '10120_9760.npy', '10123_14797.npy', '10135_9082.npy', '10144_23671.npy', '10153_25078.npy', '10153_67.npy', '10156_4342.npy', '1015_22468.npy', '10162_1414.npy', '10165_11332.npy', '10168_17788.npy', '10171_1792.npy', '10174_346.npy', '10180_22414.npy', '10186_22441.npy', '1018_8320.npy', '10192_3532.npy', '10195_9385.npy', '10198_19348.npy', '10201_9262.npy', '10204_25699.npy', '10222_12718.npy', '10246_12610.npy', '10252_24970.npy', '10255_9451.npy', '10258_21364.npy', '10261_14368.npy', '10267_6370.npy', '10270_2200.npy', '10276_8998.npy', '10279_8281.npy', '10285_16114.npy', '10288_7846.npy', '10291_15346.npy', '10291_18322.npy', '10294_16576.npy', '10297_14161.npy', '10297_20458.npy', '10297_7960.npy', '10312_4849.npy', '10315_10021.npy', '10324_19570.npy', '10333_4372.npy', '10336_6721.npy', '10339_13237.npy', '10342_12955.npy', '10345_25318.npy', '10348_2602.npy', '10351_643.npy', '10360_23866.npy', '10369_5884.npy', '1036_11668.npy', '10372_22270.npy', '10381_17647.npy', '10384_18907.npy', '10390_6274.npy', '10396_11680.npy', '10399_20446.npy', '103_12325.npy', '10402_23326.npy', '10405_6634.npy', '10414_3181.npy', '10417_25045.npy', '10426_21286.npy', '1042_24913.npy', '1042_775.npy', '10435_20893.npy', '10435_6577.npy', '10441_12229.npy', '10444_15721.npy', '10444_22135.npy', '10447_13432.npy', '10450_2512.npy', '10453_1153.npy', '1045_4819.npy', '10462_20605.npy', '10465_19255.npy', '10480_2032.npy', '10483_8680.npy', '10486_19483.npy', '1048_7114.npy', '10498_13639.npy', '10498_4996.npy', '10504_17392.npy', '10513_13801.npy', '10516_2392.npy', '10519_20674.npy', '10519_4546.npy', '1051_19189.npy', '10522_13009.npy', '10525_13915.npy', '10534_3961.npy', '10540_17215.npy', '10549_8125.npy', '1054_11971.npy', '10552_17644.npy', '10564_15910.npy', '10570_22018.npy', '10579_208.npy', '1057_9547.npy', '10582_25837.npy', '10588_7951.npy', '10594_9313.npy', '10597_21898.npy', '10600_15070.npy', '10603_1015.npy', '10615_8221.npy', '10624_13717.npy', '10633_24088.npy', '10636_16792.npy', '10639_172.npy', '10645_8068.npy', '10648_8752.npy', '10654_13777.npy', '10657_5980.npy', '10660_11752.npy', '10669_25549.npy', '10675_21523.npy', '10687_940.npy', '10696_11257.npy', '1069_8029.npy', '10702_25252.npy', '10717_23026.npy', '10720_18445.npy', '10720_20008.npy', '10726_12454.npy', '10729_21295.npy', '1072_12373.npy', '10732_24130.npy', '10738_20242.npy', '10744_21664.npy', '10747_21667.npy', '10750_20494.npy', '10759_11347.npy', '1075_5416.npy', '10762_2980.npy', '10768_298.npy', '10774_17320.npy', '10780_19411.npy', '10786_2962.npy', '10792_23524.npy', '10798_556.npy', '10813_15271.npy', '10819_25945.npy', '10822_10051.npy', '10822_18757.npy', '10834_9601.npy', '10837_13219.npy', '10849_5860.npy', '1084_17239.npy', '10855_25105.npy', '10858_17251.npy', '10864_18538.npy', '10867_19945.npy', '10873_9136.npy', '10876_21967.npy', '10879_13192.npy', '1087_6460.npy', '10885_9073.npy', '10888_26008.npy', '10891_9559.npy', '10903_14986.npy', '10909_1378.npy', '10924_2065.npy', '10936_1957.npy', '10939_7078.npy', '1093_1408.npy', '10948_1297.npy', '10951_6178.npy', '10963_14464.npy', '1096_18565.npy', '10975_5821.npy', '10978_6367.npy', '10981_22453.npy', '10987_22303.npy', '10996_10132.npy', '10999_23203.npy', '1099_20092.npy', '10_22339.npy', '11002_22960.npy', '11005_23680.npy', '11011_4774.npy', '11017_21778.npy', '11020_4750.npy', '11023_538.npy', '1102_10120.npy', '11032_760.npy', '11038_3319.npy', '11041_18442.npy', '11047_20668.npy', '11050_13084.npy', '11050_18700.npy', '1105_6529.npy', '11065_9355.npy', '11068_17590.npy', '11071_12112.npy', '11074_18238.npy', '11080_2014.npy', '11083_21130.npy', '11086_3460.npy', '11089_15991.npy', '1108_21616.npy']
+c = set(c)
+print(len(c))
+import pandas as pd
+df = pd.read_csv("C:/Users/Pietro/Desktop/nchsdb-dataset-0.3.0.csv")
+c_no_ext = [f.replace(".npy", "") for f in c]
+
+# Filtra solo le righe presenti nella lista
+df_filtered = df[df['filename_id'].isin(c_no_ext)]
+
+# Calcola età media in anni
+mean_age_years = df_filtered['age_at_sleep_study_days'].mean() / 365.25
+print(f"L'età media dei filename nella lista è: {mean_age_years:.2f} anni")
+"""
+
+from utils import stride_data
+print("Caricamento dati")
+
+normal_dir = "D:/normal"
+seizure_dir = "D:/seizure"
+normal_paths = get_path_list(normal_dir, f_extensions=['.npy'], sub_d=True)
+seizure_paths = get_path_list(seizure_dir, f_extensions=['.npy'], sub_d=True)
+
+clips_norm = []
+print('normal trating')
+for path in tqdm(normal_paths):
+    clip = np.load(path, allow_pickle=True)
+    if len(clip.shape) != 3:
+        print(f'EEG: {path}, dimensione: {clip.shape}')
+        continue
+    inf_clip = clip[~np.isfinite(clip)].shape[0]
+    total_elem = clip.shape[0]*clip.shape[1]*clip.shape[2]
+    if inf_clip / total_elem > 0.6:
+        print(f'campione: {path} rapporto [inf/]tot_elem]: {inf_clip / total_elem}')
+        continue
+    if clip.shape[2] != 50:
+        clip = stride_data(clip, 50, 0)
+        clip = clip.reshape(19, -1, 50)
+    clip[np.isinf(clip)] = np.nan 
+    clips_norm.append(np.nanmean(clip, axis=0))
+    gc.collect()
+clips_norm = np.concatenate(clips_norm, axis=0)
+
+clips_seiz = []
+print('seizure trating')
+for path in tqdm(seizure_paths):
+    clip = np.load(path, allow_pickle=True)
+    if len(clip.shape) != 3:
+        print(f'EEG: {path}, dimensione: {clip.shape}')
+        continue
+    inf_clip = clip[~np.isfinite(clip)].shape[0]
+    total_elem = clip.shape[0]*clip.shape[1]*clip.shape[2]
+    if inf_clip / total_elem > 0.6:
+        print(f'campione: {path} rapporto [inf/]tot_elem]: {inf_clip / total_elem}')
+        continue
+    if clip.shape[2] != 50:
+        clip = stride_data(clip, 50, 0)
+        clip = clip.reshape(19, -1, 50)
+    clip[np.isinf(clip)] = np.nan
+    clips_seiz.append(np.nanmean(clip,axis=0))
+    del clip
+    gc.collect()
+clips_seiz = np.concatenate(clips_seiz)
+
+print('Distribution comparison')
+distributions = {}
+for i in range(50):
+    latent_norm = clips_norm[:, i]
+    latent_seiz = clips_seiz[:, i]
+    distributions[f'latent_{i}'] = {'normal': latent_norm, 'seizure': latent_seiz}
+
+del clips_seiz, clips_norm
+
+from scipy.stats import mannwhitneyu
+p_values = []
+for i in range(50):
+    norm_vals = distributions[f'latent_{i}']['normal']
+    seiz_vals = distributions[f'latent_{i}']['seizure']
+    print(np.max(norm_vals), np.mean(norm_vals), np.min(norm_vals))
+    print(np.max(seiz_vals), np.mean(seiz_vals), np.min(seiz_vals))
+    stat, p = mannwhitneyu(norm_vals, seiz_vals)
+    print(f"Latent {i}: p-value={p}")
+    p_values.append(p)
+np.save('seiz_detec/p_values.npy', p_values)
+
+import matplotlib.pyplot as plt
+print('Distribution plotting')
+n_latent = 50
+n_rows, n_cols = 5, 10  
+fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 10)) 
+for i in range(n_latent):
+    row = i // n_cols
+    col = i % n_cols
+    ax = axes[row, col]
+    ax.hist(distributions[f'latent_{i}']['normal'], bins=30, alpha=0.5, label='normal')
+    ax.hist(distributions[f'latent_{i}']['seizure'], bins=30, alpha=0.5, label='seizure')
+    ax.set_title(f'Latent {i}', fontsize=8)
+    ax.tick_params(axis='both', which='major', labelsize=6)
+
+plt.savefig("seiz_detec/latent_distributions.png", dpi=300)
+plt.tight_layout()
+plt.show()
+
