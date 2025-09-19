@@ -480,7 +480,7 @@ plt.show()
 
 """
 
-
+"""
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -514,4 +514,466 @@ ax.set_title("Valutazione performance: MAE", fontsize=16)
 plt.legend(title="Embedding")
 
 plt.savefig('age_reg/Age_comp_perf.png', dpi=300, bbox_inches='tight')
+plt.show()"""
+
+"""
+
+from utils import get_path_list
+import numpy as np
+from tqdm import tqdm
+
+print("Caricamento dati")
+
+normal_dir = "C:/Users/Pietro/Desktop/archive/VAEEG/normal"
+seizure_dir = "C:/Users/Pietro/Desktop/archive/VAEEG/seizure"
+normal_paths = get_path_list(normal_dir, f_extensions=['.npy'], sub_d=True)
+seizure_paths = get_path_list(seizure_dir, f_extensions=['.npy'], sub_d=True)
+
+clips_norm = []
+print('normal processing')
+for path in tqdm(normal_paths):
+    normal_eeg = np.load(path, allow_pickle=True)
+
+    finite_vals = normal_eeg[np.isfinite(normal_eeg)]
+    max_val = finite_vals.max()
+    min_val = finite_vals.min()
+
+    # sostituisci inf
+    normal_eeg[np.isposinf(normal_eeg)] = max_val
+    normal_eeg[np.isneginf(normal_eeg)] = min_val
+
+    # sostituisci nan con media dei valori finiti
+    nan_mask = np.isnan(normal_eeg)
+    normal_eeg[nan_mask] = np.mean(finite_vals)
+
+    clips_norm.append(np.mean(normal_eeg, axis=0))
+clips_norm = np.concatenate(clips_norm)
+
+clips_seiz = []
+print('seizure processing')
+for path in tqdm(seizure_paths):
+    seiz_eeg = np.load(path, allow_pickle=True)
+
+    finite_vals = seiz_eeg[np.isfinite(seiz_eeg)]
+    max_val = finite_vals.max()
+    min_val = finite_vals.min()
+
+    seiz_eeg[np.isposinf(seiz_eeg)] = max_val
+    seiz_eeg[np.isneginf(seiz_eeg)] = min_val
+
+    nan_mask = np.isnan(seiz_eeg)
+    seiz_eeg[nan_mask] = np.mean(finite_vals)
+
+    clips_seiz.append(np.mean(seiz_eeg, axis=0))
+clips_seiz = np.concatenate(clips_seiz)
+
+
+
+
+print('Distribution comparison')
+distributions = {}
+for i in range(50):
+    latent_norm = clips_norm[:, i]
+    latent_seiz = clips_seiz[:, i]
+    distributions[f'latent_{i}'] = {'normal': latent_norm, 'seizure': latent_seiz}
+
+from scipy.stats import mannwhitneyu
+p_values = []
+for i in range(50):
+    norm_vals = distributions[f'latent_{i}']['normal']
+    seiz_vals = distributions[f'latent_{i}']['seizure']
+    stat, p = mannwhitneyu(norm_vals, seiz_vals)
+    print(f"Latent {i}: p-value={p}")
+    p_values.append(p)
+np.save('seiz_detec/p_values.npy', p_values)
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+from matplotlib import rcParams
+from matplotlib.ticker import ScalarFormatter
+
+# --- Ripristina notazione matematica/scientifica globale ---
+rcParams['axes.formatter.useoffset'] = True
+rcParams['axes.formatter.use_mathtext'] = True
+rcParams['axes.formatter.use_locale'] = False
+
+# Latent più significativi
+top_latents = [3, 7, 5, 8, 33, 36, 21, 16, 30, 20]
+
+n_rows, n_cols = 2, 5
+fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 8))
+
+eps = 1e-6  # piccolissimo rumore per varianza zero
+
+for idx, latent_idx in enumerate(top_latents):
+    row = idx // n_cols
+    col = idx % n_cols
+    ax = axes[row, col]
+
+    # Preleva le distribuzioni
+    latent_norm = distributions[f'latent_{latent_idx}']['normal']
+    latent_seiz = distributions[f'latent_{latent_idx}']['seizure']
+
+    # Aggiungi rumore se varianza zero
+    if np.all(latent_norm == latent_norm[0]):
+        latent_norm = latent_norm + np.random.normal(0, eps, size=latent_norm.shape)
+    if np.all(latent_seiz == latent_seiz[0]):
+        latent_seiz = latent_seiz + np.random.normal(0, eps, size=latent_seiz.shape)
+
+    # KDE
+    sns.kdeplot(latent_norm, ax=ax, color='blue', label='normal', fill=True, alpha=0.3)
+    sns.kdeplot(latent_seiz, ax=ax, color='red', label='seizure', fill=True, alpha=0.3)
+
+    # Titolo con font più grande
+    ax.set_title(f'Latent {latent_idx}', fontsize=16)  # <-- qui ingrandito
+    ax.tick_params(axis='both', which='major', labelsize=8)
+
+    # Solo 3 tick sull'asse x
+    xmin, xmax = ax.get_xlim()
+    ticks = np.linspace(xmin, xmax, 3)
+    ax.set_xticks(ticks)
+
+    # Ripristina notazione matematica/scientifica su questo asse
+    ax.xaxis.set_major_formatter(ScalarFormatter(useMathText=True))
+    ax.yaxis.set_major_formatter(ScalarFormatter(useMathText=True))
+
+    ax.legend(fontsize=8)
+
+plt.tight_layout()
+plt.savefig("seiz_detec/top10_latent_density.png", dpi=300)
+plt.show()
+"""
+
+"""
+import matplotlib.pyplot as plt
+import numpy as np
+
+import numpy as np
+
+# P-value dei latent
+p_values = [
+    0.9324071674036342, 0.4674278194487932, 0.8459857253941154, 6.314700480849854e-88, 0.8459857253941154,
+    1.5075963339837503e-57, 0.8459857253941154, 6.31470105614695e-88, 3.503140522419382e-32, 0.866914372252015,
+    0.3511175576830534, 0.09821202882715967, 0.22208934054049656, 0.007601419013093555, 0.20612431833624378,
+    0.36441221821006353, 5.655153063511487e-07, 0.015456473436150706, 0.07334497306433482, 0.0027533881806481317,
+    0.00010847200219653572, 7.696612321041706e-07, 0.16366342197646355, 0.0572713163621631, 0.29288915742653965,
+    0.044211170076849333, 0.40846245818558125, 0.7957049333263377, 0.6330202207117746, 0.4432938811488353,
+    1.133115829301052e-06, 1.424333689355922e-05, 1.3409487522062662e-05, 2.9515219223942896e-10, 5.114373134325002e-05,
+    2.9758623491354074e-06, 1.7827581728451627e-07, 2.4731801529785605e-06, 0.00016029483509015909, 2.2775195326315773e-08,
+    0.5803389031418555, 0.4107779718031189, 0.30784633217647783, 0.3983579519245851, 0.11514468998861713,
+    0.5039748947254974, 0.22067550926915935, 0.9890383885065817, 0.029883840989796177, 0.43990523445588703
+]
+
+# Soglia significatività
+alpha = 0.05
+significant = np.array(p_values) < alpha
+
+# Calcolo percentuale di variabili significative
+percent_significant = np.sum(significant) / len(significant) * 100
+print(f"Percentuale di variabili significative: {percent_significant:.2f}%")
+
+# P-value dei latent
+p_values = [
+    0.9324071674036342, 0.4674278194487932, 0.8459857253941154, 6.314700480849854e-88, 0.8459857253941154,
+    1.5075963339837503e-57, 0.8459857253941154, 6.31470105614695e-88, 3.503140522419382e-32, 0.866914372252015,
+    0.3511175576830534, 0.09821202882715967, 0.22208934054049656, 0.007601419013093555, 0.20612431833624378,
+    0.36441221821006353, 5.655153063511487e-07, 0.015456473436150706, 0.07334497306433482, 0.0027533881806481317,
+    0.00010847200219653572, 7.696612321041706e-07, 0.16366342197646355, 0.0572713163621631, 0.29288915742653965,
+    0.044211170076849333, 0.40846245818558125, 0.7957049333263377, 0.6330202207117746, 0.4432938811488353,
+    1.133115829301052e-06, 1.424333689355922e-05, 1.3409487522062662e-05, 2.9515219223942896e-10, 5.114373134325002e-05,
+    2.9758623491354074e-06, 1.7827581728451627e-07, 2.4731801529785605e-06, 0.00016029483509015909, 2.2775195326315773e-08,
+    0.5803389031418555, 0.4107779718031189, 0.30784633217647783, 0.3983579519245851, 0.11514468998861713,
+    0.5039748947254974, 0.22067550926915935, 0.9890383885065817, 0.029883840989796177, 0.43990523445588703
+]
+
+# Soglia significatività
+alpha = 0.05
+significant = np.array(p_values) < alpha
+
+# Griglia 5x10
+n_rows, n_cols = 5, 10
+fig, ax = plt.subplots(figsize=(10, 5))
+
+# Creiamo una matrice dei colori
+colors = np.where(significant.reshape(n_rows, n_cols), 'orange', 'white')
+
+# Disegniamo le celle
+for i in range(n_rows):
+    for j in range(n_cols):
+        latent_idx = i * n_cols + j
+        rect = plt.Rectangle((j, n_rows - i - 1), 1, 1, color=colors[i, j], ec='black')
+        ax.add_patch(rect)
+        ax.text(j + 0.5, n_rows - i - 0.5, f'Latent {latent_idx}', ha='center', va='center', fontsize=10, color='black')
+
+ax.set_xlim(0, n_cols)
+ax.set_ylim(0, n_rows)
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_aspect('equal')
+ax.set_title('Significatività variabili latenti (p<0.05)', fontsize=16)
+plt.tight_layout()
+plt.savefig("sleep_results/significative_matr.png")
+plt.show()
+"""
+
+"""
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Modelli
+models = ['VAEEG', 'PCA', 'FAStICA', 'KernelPCA']
+
+# Metriche reali
+test_accuracy = [0.9689999999999999] * 4
+recall_norm = [1.0] * 4
+recall_seiz = [0.0] * 4
+
+metrics = [test_accuracy, recall_norm, recall_seiz]
+metric_names = ['Test Accuracy', 'Recall Normal', 'Recall Seizure']
+
+# Posizione delle barre
+x = np.arange(len(models))
+width = 0.6  # barre più strette
+
+# Toni di grigio
+colors = ['#d9d9d9', '#b0b0b0', '#707070', '#303030']
+
+# Crea figura con 3 subplot orizzontali
+fig, axes = plt.subplots(1, 3, figsize=(13, 5))
+
+for i, ax in enumerate(axes):
+    bars = ax.bar(x, metrics[i], width, color=colors)
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=45)
+    ax.set_ylim(0, 1.1)
+    ax.set_ylabel(metric_names[i])
+    ax.set_title(f'{metric_names[i]} per modello', fontsize=14)
+    
+    # Aggiungi valori sopra le barre
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2, height + 0.02, f'{height:.2f}', ha='center', va='bottom', fontsize=10)
+    
+    # Rimuovi bordo superiore e destro
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+plt.tight_layout()
+plt.savefig("seiz_detec/metrics.png")
+plt.show()
+"""
+
+"""
+import mne
+import numpy as np
+import matplotlib.pyplot as plt
+from seizure_dataset_creation import parse_summary_txt
+from utils import select_bipolar, to_monopolar
+
+# --- Parametri: file EDF e summary corrispondente ---
+edf_file = "C:/Users/Pietro/Desktop/archive/chb-mit-scalp-eeg-database-1.0.0/chb16/chb16_17.edf"
+summary_file = "C:/Users/Pietro/Desktop/archive/chb-mit-scalp-eeg-database-1.0.0/chb16/chb16-summary.txt"
+
+# --- Parsing del file di summary ---
+_, df = parse_summary_txt(summary_file)
+
+# --- Filtra solo la riga relativa all’EDF selezionato ---
+df_file = df[df['File Name'] == edf_file.split("/")[-1]]
+
+if df_file.empty:
+    raise ValueError(f"Nessuna riga trovata in {summary_file} per {edf_file}")
+
+# --- Funzione per la seizure più corta ---
+def min_seizure_duration(row):
+    starts = row['Seizure Start Times']
+    ends = row['Seizure End Times']
+    if len(starts) == 0 or len(ends) == 0 or len(starts) != len(ends):
+        return np.inf
+    durations = np.array(ends) - np.array(starts)
+    return durations.min()
+
+df_file['min_seizure_duration'] = df_file.apply(min_seizure_duration, axis=1)
+
+# --- Riga con la seizure più corta in questo file ---
+idx_min = df_file['min_seizure_duration'].idxmin()
+row_min = df_file.loc[idx_min]
+
+print("Seizure più corta in questo file:")
+print(f"File Name: {row_min['File Name']}")
+print(f"Durata minima: {row_min['min_seizure_duration']} secondi")
+
+# --- Carica EEG ---
+def has_monopolar(ch_names, sep='-'):
+    for ch in ch_names:
+        if sep not in ch:
+            return True
+    return False
+print(f"Caricamento EDF: {edf_file}")
+eeg = mne.io.read_raw_edf(edf_file, preload=True)
+if not has_monopolar(eeg.info['ch_names']):
+    eeg, _ = select_bipolar(eeg)
+    eeg, _ = to_monopolar(eeg, 'CZ')
+
+# --- Trova la seizure più corta nello slice ---
+starts = np.array(row_min['Seizure Start Times'])
+ends   = np.array(row_min['Seizure End Times'])
+durations = ends - starts
+idx_shortest = durations.argmin()
+
+sfreq = eeg.info['sfreq']
+start_idx = int(starts[idx_shortest] * sfreq)
+end_idx   = int(ends[idx_shortest] * sfreq)
+
+# --- Slice: 15 secondi prima e dopo ---
+slice_start = max(int(start_idx - 15*sfreq), 0)
+slice_end   = min(int(end_idx + 15*sfreq), eeg.n_times)
+
+# --- Estrai dati EEG ---
+data_eeg = eeg.get_data()[:, slice_start:slice_end] * 1e6
+n_channels, n_samples = data_eeg.shape
+print(f"Shape dei dati EEG: {data_eeg.shape}")
+
+# --- Nomi canali ---
+ch_names = ['Fp1','Fp2','F3','F4','C3','C4','P3','P4','O1','O2',
+            'F7','F8','T3','T4','T5','T6','Fz','Cz','Pz']
+
+# --- Offset verticale ---
+offset = 200
+y_offsets = np.arange(n_channels)[::-1] * offset
+
+# --- Identifica eventuali altre seizure nello slice ---
+starts_samples = starts * sfreq
+ends_samples   = ends * sfreq
+mask_in_slice = (ends_samples > slice_start) & (starts_samples < slice_end)
+other_seizures_in_slice = list(zip(starts_samples[mask_in_slice], ends_samples[mask_in_slice]))
+
+# --- Plot ---
+plt.figure(figsize=(15, 8))
+for i in range(n_channels):
+    plt.plot(np.arange(n_samples)/sfreq, data_eeg[i]+y_offsets[i], color='blue')
+    plt.text(-0.1, y_offsets[i], ch_names[i], va='center', ha='right', fontsize=10)
+
+# Evidenzia la seizure più corta
+plt.axvspan((start_idx - slice_start)/sfreq, (end_idx - slice_start)/sfreq, 
+            color='red', alpha=0.3, label='Seizure più corta')
+
+# Evidenzia altre seizure nello slice
+for s_start, s_end in other_seizures_in_slice:
+    if s_start == start_idx and s_end == end_idx:
+        continue
+    plt.axvspan((s_start - slice_start)/sfreq, (s_end - slice_start)/sfreq, 
+                color='red', alpha=0.15, label='Altra seizure')
+
+plt.xlabel("Tempo (s)")
+plt.yticks([])
+plt.tight_layout()
+plt.savefig("seiz_detec/seizure_shortest_in_file.png", dpi=300)
+plt.show()
+
+from deploy import get_orig_rec_latent, load_models
+
+model = load_models(model='VAEEG', save_files=['models/VAEEG/delta_band.pth', 'models/VAEEG/theta_band.pth', 'models/VAEEG/alpha_band.pth', 'models/VAEEG/low_beta_band.pth', 'models/VAEEG/high_beta_band.pth'], params=[[8], [10], [12], [10], [10]])
+pi, pj, latent_norm = get_orig_rec_latent(raw=data_eeg , model=model, fs=256)
+print(latent_norm.shape)
+latent_norm = latent_norm.mean(axis = 0)
+print(latent_norm.shape)
+print("Shape finale:", latent_norm.shape)  # (30, 50)
+
+latent_mat = latent_norm.T  # adesso è (50, 30): latenti (righe) × clip (colonne)
+
+plt.figure(figsize=(15, 8))  
+im = plt.imshow(latent_mat, aspect='auto', origin='lower', cmap='bwr')  
+cbar = plt.colorbar(im, orientation='horizontal', fraction=0.046, pad=0.04, shrink=0.8, location='bottom')
+cbar.set_label("Valore latente", fontsize=10)
+plt.xlabel("Clip (30)", fontsize=12)
+plt.ylabel("Dimensione latente (50)", fontsize=12)
+plt.title("Heatmap latent_norm (latenti × clip)", fontsize=14)
+
+plt.tight_layout()
+plt.savefig("seiz_detec/latent_heatmap_bwr.png", dpi=300)
+plt.show()
+
+"""
+
+"""
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+# P-value dei latent
+p_values = [
+    0.9324071674036342, 0.4674278194487932, 0.8459857253941154, 6.314700480849854e-88, 0.8459857253941154,
+    1.5075963339837503e-57, 0.8459857253941154, 6.31470105614695e-88, 3.503140522419382e-32, 0.866914372252015,
+    0.3511175576830534, 0.09821202882715967, 0.22208934054049656, 0.007601419013093555, 0.20612431833624378,
+    0.36441221821006353, 5.655153063511487e-07, 0.015456473436150706, 0.07334497306433482, 0.0027533881806481317,
+    0.00010847200219653572, 7.696612321041706e-07, 0.16366342197646355, 0.0572713163621631, 0.29288915742653965,
+    0.044211170076849333, 0.40846245818558125, 0.7957049333263377, 0.6330202207117746, 0.4432938811488353,
+    1.133115829301052e-06, 1.424333689355922e-05, 1.3409487522062662e-05, 2.9515219223942896e-10, 5.114373134325002e-05,
+    2.9758623491354074e-06, 1.7827581728451627e-07, 2.4731801529785605e-06, 0.00016029483509015909, 2.2775195326315773e-08,
+    0.5803389031418555, 0.4107779718031189, 0.30784633217647783, 0.3983579519245851, 0.11514468998861713,
+    0.5039748947254974, 0.22067550926915935, 0.9890383885065817, 0.029883840989796177, 0.43990523445588703
+]
+
+# Soglia significatività
+alpha = 0.05
+significant = np.array(p_values) < alpha
+
+# Griglia 5x10
+n_rows, n_cols = 5, 10
+fig, ax = plt.subplots(figsize=(12, 6))
+
+# Creiamo una matrice dei colori
+colors = np.where(significant.reshape(n_rows, n_cols), 'orange', 'white')
+
+# Disegniamo le celle con nome del latent e p-value a 3 cifre significative
+for i in range(n_rows):
+    for j in range(n_cols):
+        latent_idx = i * n_cols + j
+        rect = plt.Rectangle((j, n_rows - i - 1), 1, 1, color=colors[i, j], ec='black')
+        ax.add_patch(rect)
+        # Mostra nome latent e p-value
+        p_val = p_values[latent_idx]
+        ax.text(j + 0.5, n_rows - i - 0.5, f'Latent {latent_idx}\n{p_val:.3g}',
+                ha='center', va='center', fontsize=9, color='black')
+
+ax.set_xlim(0, n_cols)
+ax.set_ylim(0, n_rows)
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_aspect('equal')
+ax.set_title('Significatività variabili latenti (p < 0.05)', fontsize=16)
+plt.tight_layout()
+plt.savefig("sleep_results/significative_matr.png", dpi=300)
+plt.show()
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Etichette delle classi
+classes = ['N1', 'N2', 'N3', 'R', 'W']
+
+# Valori di accuracy per classe (diagonale della matrice)
+accuracies = [0.00, 1.00, 0.00, 0.05, 0.06]
+
+# Costruisco la matrice di confusione
+conf_matrix = np.zeros((5, 5))
+
+# Imposto la diagonale con le accuratezze
+np.fill_diagonal(conf_matrix, accuracies)
+
+# Metto tutti i valori non predetti correttamente su N2 (colonna 1)
+for i in range(5):
+    conf_matrix[i, 1] = 1.0 - conf_matrix[i, i]  # errore = 1 - accuracy
+    conf_matrix[i, i] = accuracies[i]            # rimetto la diagonale
+
+# Plot
+plt.figure(figsize=(6, 5))
+sns.heatmap(conf_matrix, annot=True, fmt=".2f", cmap="Blues", xticklabels=classes, yticklabels=classes)
+plt.xlabel("Classe Predetta")
+plt.ylabel("Classe Reale")
+plt.title("Confusion Matrix")
+plt.savefig('conf_matr.png', dpi=300)
 plt.show()

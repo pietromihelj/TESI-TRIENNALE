@@ -38,19 +38,22 @@ class DeployVAEEG():
         OUTPUT: torch tensor della forma=[ch_num, clip_num, bands_num, clip_len]
         """
         #inizializzo scala e bande
-        scale = 2e+11
+        scale = 1
         BANDS =  [("delta", (1.0, 4.0)),
                   ("theta", (4.0, 8.0)),
                   ("alpha", (8.0, 13.0)),
                   ("low_beta", (13, 20)),
                   ("high_beta", (20, 30.0))]
 
-        signal = signal * scale
+        #signal = signal
         #sistemo la frequenza di samplinf
         if fs != 250:
             ratio = 250/fs
             signal = mne.filter.resample(signal.astype(np.float64), ratio, verbose=False)
+        signal = signal * scale
         signal = signal - signal.mean(axis=0, keepdims=True)
+
+        """
         mth = int(m_len*fs)
         start = int(drop*fs)
         end = signal.shape[1] - int(drop*fs)
@@ -62,9 +65,23 @@ class DeployVAEEG():
         common_intervals = c_clean[0]
         for ch_intervals in c_clean[1:]:
             common_intervals = common_intervals & ch_intervals
-        if common_intervals:
+        """
+
+        window = 125
+        mask = np.any(signal > 400, axis=0)
+        expanded_mask = np.zeros_like(mask, dtype=bool)
+        for idx in np.where(mask)[0]:
+            start = max(idx - window, 0)
+            end = min(idx + window + 1, signal.shape[1])
+            expanded_mask[start:end] = True
+
+        clean_signal = signal[:, ~expanded_mask]
+
+        if  clean_signal.shape[1] > 0:
+            """
             valid_idx = np.concatenate([np.arange(interval.lower, interval.upper + 1) for interval in common_intervals])
             clean_signal = signal[:,valid_idx]
+            """
             out = []
             #separo il segnale in 5 bande
             for _, (lf, hf) in BANDS:
@@ -155,7 +172,6 @@ def get_orig_rec_latent(raw, model, fs=250):
     assert isinstance(raw, np.ndarray), 'input deve essere una array numpy'
     if isinstance(model, DeployVAEEG):
         orig = model.preprocess(signal=raw, fs=fs)
-        print('fine preprocess')
         #print(f'Check post preprocess. Massimo: {np.max(orig)}, mean: {np.mean(orig)}, median: {np.median(orig)}')
         #origin diventa una lista di forma [ch_num, clip_num, bands_num, clip_len]
         if orig is None:

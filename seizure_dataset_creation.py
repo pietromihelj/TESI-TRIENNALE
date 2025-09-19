@@ -1,4 +1,4 @@
-"""
+
 #monopolarizzazione dei canali per il seizure dataset
 
 from utils import get_path_list, to_monopolar, select_bipolar, get_raw, check_channel_names
@@ -10,11 +10,11 @@ import mne
 import os
 import gc
 warnings.filterwarnings("ignore")
-
+"""
 channels = ['FP1', 'F7', 'O1', 'F3', 'C3', 'P3', 'FP2', 'F4', 'C4', 'P4', 'O2', 'F8', 'FZ', 'CZ', 'PZ', 'T7', 'P7', 'T8', 'P8']
 rename_dict = {'T7':'T3', 'P7':'T5', 'T8':'T4', 'P8':'T6'}
 
-raws = get_path_list("D:/CHB-MIT_seizure/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.edf'], sub_d=True)
+raws = get_path_list("C:/Users/Pietro/Desktop/archive/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.edf'], sub_d=True)
 print('Numero di campioni: ', len(raws))
 
 i=0
@@ -25,7 +25,7 @@ for raw_path in tqdm(raws):
     raw = get_raw(raw_path)
     raw, flag = select_bipolar(raw)
     if not flag:
-        save_path = raw_path.replace("CHB-MIT_seizure", "seizure_monopolar_dataset")
+        save_path = raw_path.replace("chb-mit-scalp-eeg-database-1.0.0", "monopolar")
         if any(ch not in raw.info['ch_names'] for ch in channels):
             j=j+1
             erased.append(raw)
@@ -45,9 +45,9 @@ for raw_path in tqdm(raws):
         continue
     mono.pick(channels)
     mono.rename_channels(rename_dict)  
-    save_path = raw_path.replace("CHB-MIT_seizure", "seizure_monopolar_dataset")
+    save_path = raw_path.replace("chb-mit-scalp-eeg-database-1.0.0", "monopolar")
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    #mne.export.export_raw(save_path, mono, fmt='edf', physical_range=(-1.5*0.005, 1.5*0.005), overwrite=True, verbose=False)
+    mne.export.export_raw(save_path, mono, fmt='edf', physical_range=(-1.5*0.005, 1.5*0.005), overwrite=True, verbose=False)
     i = i+1
     for var_name in ['raw', 'mono', 'data']:
         if var_name in globals():
@@ -56,9 +56,10 @@ for raw_path in tqdm(raws):
 
 print('File salvati: ',i)
 print('File eliminati per canali mancanti: ',j)
+
+
+#separazione in segmenti seizure e normale
 """
-
-
 import pandas as pd
 import re
 from mne import concatenate_raws
@@ -70,10 +71,11 @@ from deploy import load_models, get_orig_rec_latent
 import numpy as np
 import gc
 warnings.filterwarnings("ignore")
-
+"""
 save_dir = 'seizure_datset'
 
-seizure_info_paths = get_path_list("D:/CHB-MIT_seizure", f_extensions=['.txt'], sub_d=True)
+seizure_info_paths = get_path_list("C:/Users/Pietro/Desktop/archive/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.txt'], sub_d=True)
+"""
 def parse_summary_txt(txt_path):
     data = []
     current = {}
@@ -174,20 +176,17 @@ def seizure_duration(row):
     # sottrazione elemento per elemento e somma delle durate
     durations = [end - start for start, end in zip(starts, ends)]
     return sum(durations)
-
-remove = ['chb12_27.edf','chb12_28.edf','chb12_29.edf']
-
+"""
 dfs = []
 for path in seizure_info_paths:  
     metadata, df_files = parse_summary_txt(path)
     dfs.append(df_files)
 
 total_df = pd.concat(dfs, ignore_index=True)
-total_df = total_df[~total_df['File Name'].isin(remove)]
 seizures_starts = [s if s else [None] for s in total_df['Seizure Start Times']]
 seizures_ends = [s if s else [None] for s in total_df['Seizure End Times']]
 
-raw_paths = get_path_list("D:/seizure_monopolar_dataset", f_extensions=['.edf'], sub_d=True)
+raw_paths = get_path_list("C:/Users/Pietro/Desktop/archive/monopolar", f_extensions=['.edf'], sub_d=True)
 for raw_path, start, end in tqdm(zip(raw_paths, seizures_starts, seizures_ends)):
     raw = get_raw(raw_path)
     if start[0] is None and end[0] is None:
@@ -227,8 +226,8 @@ for raw_path, start, end in tqdm(zip(raw_paths, seizures_starts, seizures_ends))
         except ValueError:
             print(f'File: {raw_path} ha un tmax troppo grande dopo la ultima seizure')
     raw_clean = concatenate_raws(keep_segments)
-    save_clean = raw_path.replace("seizure_monopolar_dataset", "seizure_dataset/normal")
-    save_seizure = raw_path.replace("seizure_monopolar_dataset", "seizure_dataset/seizure")
+    save_clean = raw_path.replace("monopolar", "seizure_dataset/normal")
+    save_seizure = raw_path.replace("monopolar", "seizure_dataset/seizure")
     os.makedirs(os.path.dirname(save_clean), exist_ok=True)
     os.makedirs(os.path.dirname(save_seizure), exist_ok=True)
 
@@ -238,13 +237,20 @@ for raw_path, start, end in tqdm(zip(raw_paths, seizures_starts, seizures_ends))
         sez.export(save_seizure, fmt='edf', overwrite=True, verbose=False)
 
 
-save_norm = "D:/DS_seiz/normal/"
-save_seiz = "D:/DS_seiz/abnormal/"
+#estrazione delle latenti
+import os
+from utils import get_path_list, get_raw, check_channel_names
+from deploy import get_orig_rec_latent, load_models
+import numpy as np 
+import gc
+
+save_norm = "C:/Users/Pietro/Desktop/archive/VAEEG/normal"
+save_seiz = "C:/Users/Pietro/Desktop/archive/VAEEG/seizure"
 os.makedirs(save_norm, exist_ok=True)
 os.makedirs(save_seiz, exist_ok=True)
-normal_paths = get_path_list("D:/seizure_dataset/normal", f_extensions=['.edf'], sub_d=True)
+normal_paths = get_path_list("C:/Users/Pietro/Desktop/archive/seizure_dataset/normal", f_extensions=['.edf'], sub_d=True)
 print('Caricamento modelli')
-model = load_models(model='VAEEG', save_files=['models/VAEEG/delta_band.ckpt', 'models/VAEEG/theta_band.ckpt', 'models/VAEEG/alpha_band.ckpt', 'models/VAEEG/low_beta_band.ckpt', 'models/VAEEG/high_beta_band.ckpt'], params=[[8], [10], [12], [10], [10]])
+model = load_models(model='VAEEG', save_files=['models/VAEEG/delta_band.pth', 'models/VAEEG/theta_band.pth', 'models/VAEEG/alpha_band.pth', 'models/VAEEG/low_beta_band.pth', 'models/VAEEG/high_beta_band.pth'], params=[[8], [10], [12], [10], [10]])
 print('Modelli caricati')
 print('###########################################################################')
 print('Inizio salvataggio normali:')
@@ -255,26 +261,34 @@ for i,norm in enumerate(normal_paths):
     raw_norm.close()
     del raw_norm
     pi, pj, latent_norm = get_orig_rec_latent(raw=eeg_norm, model=model, fs=256)
+    print(f' caqlcolo delle latenti di: {norm}, dimensione: {eeg_norm.shape}')
+    if latent_norm is None:
+        print(f'EEG {norm} 0 clip pulite')
+        continue
     base_name = os.path.splitext(os.path.basename(norm))[0]
     np.save(os.path.join(save_norm, base_name + '.npy'), latent_norm)
-    print(f'Salvato file {norm}')
+    print(f'Salvato file {norm}, con dimensioni {latent_norm.shape}')
     del eeg_norm, latent_norm, pi, pj
     gc.collect()
 print('Fine salvataggio normali')
 print('############################################################################')
 
 print('Inizio salvataggio seizure')
-seizure_paths = get_path_list("D:/seizure_dataset/normal", f_extensions=['.edf'], sub_d=True)
+seizure_paths = get_path_list("C:/Users/Pietro/Desktop/archive/seizure_dataset/seizure", f_extensions=['.edf'], sub_d=True)
 for j,seiz in enumerate(seizure_paths):
     raw_seiz = get_raw(seiz)
     check_channel_names(raw_seiz, verbose=False)
     eeg_seiz = raw_seiz.get_data().astype(np.float32)
     raw_seiz.close()
     del raw_seiz
+    print(f' caqlcolo delle latenti di: {norm}, dimensione: {eeg_seiz.shape}')
     ti, tj, latent_seiz = get_orig_rec_latent(raw=eeg_seiz, model=model, fs=256)
+    if latent_seiz is None:
+        print(f'EEG {seiz} 0 clip pulite')
+        continue
     base_name = os.path.splitext(os.path.basename(seiz))[0]
     np.save(os.path.join(save_seiz, base_name + '.npy'), latent_seiz)
-    print(f'Salvato file {seiz}')
+    print(f'Salvato file {seiz}, {latent_seiz.shape}')
     del eeg_seiz, latent_seiz, ti, tj
     gc.collect()
 print('Fine salvataggio seizure')
@@ -283,7 +297,7 @@ print(f'File normali salvati: {i}, File seizure salvati: {j}')
 print('Done')
 
 
-
+"""
 
 
 

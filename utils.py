@@ -8,6 +8,7 @@ import portion as P
 from functools import wraps
 from inspect import signature
 import re
+import pandas as pd
 
 def check_type(p_name, p_value, allowed_types):
     """"
@@ -390,7 +391,7 @@ def to_monopolar(raw_bipolar, ref='average', ch_name_sep='-'):
     return raw_monopolar, max_diff
 
 def select_bipolar(raw):
-    ch_necessary = ['F3', 'F4', 'C3', 'C4', 'O1', 'O2', 'CZ']  
+    ch_necessary = ['FP1', 'FP2', 'F3', 'F4', 'FZ', 'F7', 'F8', 'P3', 'P4', 'PZ', 'C3', 'C4', 'CZ', 'T3', 'T4', 'T5', 'T6', 'O1', 'O2'] 
     flag = False
 
     selected_chs = []

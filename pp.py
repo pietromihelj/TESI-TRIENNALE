@@ -459,7 +459,7 @@ for path in paths:
         np.save(new_path, saved_eeg)
 print('END')
 """
-
+"""
 import numpy as np
 from utils import get_path_list
 
@@ -480,3 +480,41 @@ paths = get_path_list("D:/normal", f_extensions=['.npy'], sub_d=True)
 for path in paths:
     eeg = np.load(path, allow_pickle=True)        
     check_all_nan_channels(eeg)
+"""
+
+from utils import get_path_list, get_raw
+import pandas as pd
+paths = get_path_list("C:/Users/Pietro/Desktop/archive/chb-mit-scalp-eeg-database-1.0.0", f_extensions=['.txt'], sub_d=True)
+
+from seizure_dataset_creation import parse_summary_txt, time_to_seconds, duration_seconds, seizure_duration
+
+dfs = []
+for path in paths:  
+    metadata, df_files = parse_summary_txt(path)
+    dfs.append(df_files)
+
+df = pd.concat(dfs, ignore_index=True)
+
+def max_seizure_duration(row):
+    starts = row['Seizure Start Times']
+    ends = row['Seizure End Times']
+    
+    # Se uno dei due è vuoto o hanno lunghezza diversa, ritorna 0
+    if len(starts) == 0 or len(ends) == 0 or len(starts) != len(ends):
+        return 0
+    
+    durations = np.array(ends) - np.array(starts)
+    return durations.max()
+
+# Applica la funzione a tutte le righe
+df['max_seizure_duration'] = df.apply(max_seizure_duration, axis=1)
+
+# Trova la riga con la durata massima
+idx_max = df['max_seizure_duration'].idxmax()
+row_max = df.loc[idx_max]
+
+print("Seizure più lunga:")
+print(f"File Name: {row_max['File Name']}")
+print(f"Start Time: {row_max['Start Time']}")
+print(f"End Time: {row_max['End Time']}")
+print(f"Durata massima: {row_max['max_seizure_duration']} campioni")

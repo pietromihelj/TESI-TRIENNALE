@@ -9,6 +9,8 @@ import os
 import random
 from sklearn import metrics
 import gc
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 class LSTM_model(nn.Module):
     def __init__(self, dim=200):
@@ -127,10 +129,16 @@ class SleepStage_Model(nn.Module):
    
 def get_metrics(predict, label, class_num):
     metric_cm = metrics.confusion_matrix(label, predict, labels=list(range(class_num)))
-    metric = metric_cm / metric_cm.sum(axis=1, keepdims=True)
-    acc0, acc1, acc2, acc3, acc4 = np.diagonal(metric)
-    total_acc = np.trace(metric_cm) / np.sum(metric_cm)
-    return metric_cm, np.round(np.array([acc0, acc1, acc2, acc3, acc4, total_acc]), 3)
+    
+    # Normalizzazione riga per riga, evitando divisioni per zero
+    row_sums = metric_cm.sum(axis=1, keepdims=True)
+    metric = np.divide(metric_cm, row_sums, out=np.zeros_like(metric_cm, dtype=float), where=row_sums!=0)
+    
+    acc_per_class = np.diagonal(metric)
+    total_acc = np.trace(metric_cm) / np.sum(metric_cm) if np.sum(metric_cm) != 0 else 0.0
+    
+    # Restituisce matrice e array di accuracy per classe + totale
+    return metric_cm, np.round(np.append(acc_per_class, total_acc), 3)
 
 def initialize_weights(model):
     for m in model.modules():
@@ -251,6 +259,7 @@ def train_model(model, n_epoch, trainloader, testloader, lr, save_dir, device='c
         for tr_data, labels in trainloader:
             tr_data = tr_data.transpose(1,2)
             tr_data, labels = tr_data.float().to(device), labels.long().to(device)
+            print(tr_data.shape)
             optimizer.zero_grad()
             pred = model(tr_data)
             loss = loss_fn(pred, labels)
@@ -287,33 +296,40 @@ def train_model(model, n_epoch, trainloader, testloader, lr, save_dir, device='c
     return np.mean(te_CMs, axis=0), stage_accs, total_losses
 
 
-N1_dir = "/u/pmihelj/datasets/sleep/VAEEG/N1/"
-N2_dir = "/u/pmihelj/datasets/sleep/VAEEG/N2/"
-N3_dir = "/u/pmihelj/datasets/sleep/VAEEG/N3/"
-R_dir = "/u/pmihelj/datasets/sleep/VAEEG/R/"
-W_dir = "/u/pmihelj/datasets/sleep/VAEEG/W/"
+#N1_dir = "/u/pmihelj/datasets/sleep/VAEEG/N1/"
+#N2_dir = "/u/pmihelj/datasets/sleep/VAEEG/N2/"
+#N3_dir = "/u/pmihelj/datasets/sleep/VAEEG/N3/"
+#R_dir = "/u/pmihelj/datasets/sleep/VAEEG/R/"
+#W_dir = "/u/pmihelj/datasets/sleep/VAEEG/W/"
 
-N1_paths = get_path_list(N1_dir, f_extensions=['.npy'], sub_d=True)
-N2_paths = get_path_list(N2_dir, f_extensions=['.npy'], sub_d=True)
-N3_paths = get_path_list(N3_dir, f_extensions=['.npy'], sub_d=True)
-R_paths = get_path_list(R_dir, f_extensions=['.npy'], sub_d=True)
-W_paths = get_path_list(W_dir, f_extensions=['.npy'], sub_d=True)
-print(f'Pathy raccolti: {len(N1_paths), len(N2_paths),  len(N3_paths),  len(R_paths),  len(W_paths)}')
+#N1_paths = get_path_list(N1_dir, f_extensions=['.npy'], sub_d=True)
+#N2_paths = get_path_list(N2_dir, f_extensions=['.npy'], sub_d=True)
+#N3_paths = get_path_list(N3_dir, f_extensions=['.npy'], sub_d=True)
+#R_paths = get_path_list(R_dir, f_extensions=['.npy'], sub_d=True)
+#W_paths = get_path_list(W_dir, f_extensions=['.npy'], sub_d=True)
+#print(f'Pathy raccolti: {len(N1_paths), len(N2_paths),  len(N3_paths),  len(R_paths),  len(W_paths)}')
 
-dataset = SleepDataset(N1_file=N1_paths, N2_file=N2_paths, N3_file=N3_paths, R_file=R_paths, W_file=W_paths)
-print(f'Dataset creato di lunghezza: {len(dataset)}')
+#dataset = SleepDataset(N1_file=N1_paths, N2_file=N2_paths, N3_file=N3_paths, R_file=R_paths, W_file=W_paths)
+#print(f'Dataset creato di lunghezza: {len(dataset)}')
 
-train_size = int(0.8*len(dataset))
-test_size = len(dataset) - train_size
-train_ds, test_ds = random_split(dataset, [train_size, test_size])
-del dataset
-torch.save(train_ds, "/u/pmihelj/datasets/sleep/VAEEG/Train_ds.pt", _use_new_zipfile_serialization=True, pickle_protocol=5)
-del train_ds
-torch.save(test_ds, "/u/pmihelj/datasets/sleep/VAEEG/Test_ds.pt", _use_new_zipfile_serialization=True, pickle_protocol=5)
-del test_ds
-gc.collect()
-print('dataset_salvato')
+#train_size = int(0.8*len(dataset))
+#test_size = len(dataset) - train_size
+#train_ds, test_ds = random_split(dataset, [train_size, test_size])
+#del dataset
+#torch.save(train_ds, "/u/pmihelj/datasets/sleep/VAEEG/Train_ds.pt", _use_new_zipfile_serialization=True, pickle_protocol=5)
+#del train_ds
+#torch.save(test_ds, "/u/pmihelj/datasets/sleep/VAEEG/Test_ds.pt", _use_new_zipfile_serialization=True, pickle_protocol=5)
+#del test_ds
+#gc.collect()
+#print('dataset_salvato')
 BATCH_SIZE = 8
+save_path = "/u/pmihelj/datasets/sleep/VAEEG/saves/ckpt_900.pt"
+
+checkpoint = torch.load(save_path, map_location='cuda', weights_only=False)
+
+model = SleepStage_Model().to('cuda')
+model.load_state_dict(checkpoint['model_state_dict'])
+model.eval()
 print('Modello: VAEEG') ################################################################################################################################
 save_dir = '/u/pmihelj/datasets/sleep/VAEEG/'
 os.makedirs(save_dir, exist_ok=True)
@@ -340,7 +356,7 @@ gc.collect()
 print('train loader creato')
 model = SleepStage_Model()
 print('Inizio training')
-confmatr, accs, total_losses = train_model(model=model, n_epoch=1000, trainloader=trainloader, testloader=testloader, lr=0.001, steps=100, save_dir=save_dir)
+confmatr, accs, total_losses = train_model(model=model, n_epoch=300, trainloader=trainloader, testloader=testloader, lr=0.001, steps=100, save_dir=save_dir)
 np.save(save_dir+'/conf_matr.npy', confmatr)
 np.save(save_dir+'/accs.npy', accs)
 np.save(save_dir+'/losses.npy', total_losses)
